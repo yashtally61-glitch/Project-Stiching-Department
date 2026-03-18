@@ -518,58 +518,48 @@ with tab_prod:
     inp_col, sum_col = st.columns([2, 1])
     h_vals = {}
 
+    op_vals = {}
+
     with inp_col:
         # Column header row
-        hdr1, hdr2, hdr3 = st.columns([3, 2, 2])
-        with hdr1: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 2px;border-bottom:2px solid #2c5aa0;'>Time Slot</div>", unsafe_allow_html=True)
-        with hdr2: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 2px;border-bottom:2px solid #2c5aa0;'>Operation</div>", unsafe_allow_html=True)
-        with hdr3: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 2px;border-bottom:2px solid #2c5aa0;'>Pieces</div>", unsafe_allow_html=True)
+        hdr1, hdr2, hdr3 = st.columns([3, 3, 2])
+        with hdr1: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 4px;border-bottom:2px solid #2c5aa0;'>Time Slot</div>", unsafe_allow_html=True)
+        with hdr2: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 4px;border-bottom:2px solid #2c5aa0;'>Operation</div>", unsafe_allow_html=True)
+        with hdr3: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 4px;border-bottom:2px solid #2c5aa0;'>Pieces</div>", unsafe_allow_html=True)
 
-        for idx, (hcol, hlbl) in enumerate(zip(HOUR_COLS, HOUR_LBLS)):
+        for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
             is_lunch = (hcol == "H_13_14")
-
-            rc1, rc2, rc3 = st.columns([3, 2, 2])
+            rc1, rc2, rc3 = st.columns([3, 3, 2])
 
             # Time label
             with rc1:
                 if is_lunch:
                     st.markdown(
-                        f"<div style='padding:7px 4px;font-size:.85rem;color:#9e9e9e;background:#fafafa;border-bottom:1px solid #eee;border-radius:3px;'>🍽️ {hlbl}<br><span style='font-size:.72rem;'>Lunch break</span></div>",
+                        f"<div style='padding:8px 4px;font-size:.84rem;color:#9e9e9e;background:#fafafa;border-bottom:1px solid #eee;border-radius:3px;'>🍽️ {hlbl}<br><span style='font-size:.71rem;'>Lunch break</span></div>",
                         unsafe_allow_html=True)
                 else:
                     st.markdown(
-                        f"<div style='padding:7px 4px;font-size:.88rem;font-weight:600;color:#1a3a52;border-bottom:1px solid #eee;'>🕐 {hlbl}</div>",
+                        f"<div style='padding:8px 4px;font-size:.88rem;font-weight:600;color:#1a3a52;border-bottom:1px solid #eee;'>🕐 {hlbl}</div>",
                         unsafe_allow_html=True)
 
-            # Operation selector — shown only for 9:00-10:00 (first slot), blank for others
+            # Operation dropdown — every active slot gets its own dropdown
             with rc2:
-                if idx == 0:
-                    # First slot: show the operation selectbox inline
-                    sel_op_inline = st.selectbox(
+                if is_lunch:
+                    st.markdown("<div style='padding:8px 4px;color:#bdbdbd;font-size:.8rem;border-bottom:1px solid #eee;'>—</div>", unsafe_allow_html=True)
+                    op_vals[hcol] = None
+                else:
+                    op_vals[hcol] = st.selectbox(
                         "",
                         op_list,
                         index=op_list.index(sel_op) if sel_op in op_list else 0,
-                        key="op_inline",
+                        key=f"op_{hcol}",
                         label_visibility="collapsed"
                     )
-                    # Update tgt/rate if user changed operation here
-                    if sel_op_inline != sel_op:
-                        sel_op   = sel_op_inline
-                        op_r     = style_ops[style_ops["Operation"] == sel_op].iloc[0]
-                        tgt_val  = int(op_r["Target"])
-                        rate_val = float(op_r["Rate_Rs"])
-                elif is_lunch:
-                    st.markdown("<div style='padding:7px 4px;color:#bdbdbd;font-size:.8rem;'>—</div>", unsafe_allow_html=True)
-                else:
-                    # Show the selected operation name as read-only label
-                    st.markdown(
-                        f"<div style='padding:7px 4px;font-size:.8rem;color:#546e7a;border-bottom:1px solid #eee;'>{sel_op}</div>",
-                        unsafe_allow_html=True)
 
             # Piece input
             with rc3:
                 if is_lunch:
-                    st.markdown("<div style='padding:7px 4px;color:#9e9e9e;font-size:.84rem;'>— break —</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='padding:8px 4px;color:#9e9e9e;font-size:.84rem;border-bottom:1px solid #eee;'>— break —</div>", unsafe_allow_html=True)
                     h_vals[hcol] = 0
                 else:
                     h_vals[hcol] = st.number_input(
@@ -607,8 +597,6 @@ with tab_prod:
         eff_color = "#2e7d32" if eff_pct>=100 else ("#f57c00" if eff_pct>=70 else "#c62828")
         st.markdown(f"""
         <div style="margin-top:10px;background:#1a3a5c;color:#fff;border-radius:8px;padding:12px;text-align:center;">
-          <div style="font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.05em;">Operation</div>
-          <div style="font-size:.95rem;font-weight:600;margin-bottom:6px;">{sel_op}</div>
           <div style="font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.05em;">Total Pieces</div>
           <div style="font-size:2rem;font-weight:700;font-family:'IBM Plex Mono',monospace;">{total_pcs}</div>
           <div style="font-size:.7rem;opacity:.7;margin-top:6px;">Efficiency</div>
@@ -622,24 +610,51 @@ with tab_prod:
     st.markdown("---")
     if st.button("💾 Save Production Entry", key="pe_save", use_container_width=True,
                  type="primary"):
-        new_row = {
-            "Date": str(pe_date),
-            "Karigar_ID": k_row["Karigar_ID"],
-            "Karigar_Name": k_row["Name"],
-            "Challan_No": challan_no,
-            "Style": pe_style,
-            "Operation": sel_op,
-            **h_vals,
-            "Total_Pieces": total_pcs,
-            "Target": tgt_val,
-            "Rate_Rs": rate_val,
-            "Efficiency_%": eff_pct,
-            "Piece_Value_Rs": piece_val,
-        }
-        st.session_state.production_log = pd.concat(
-            [st.session_state.production_log, pd.DataFrame([new_row])], ignore_index=True)
-        st.success(f"✅ Saved! {k_row['Name']} | {sel_op} | {total_pcs} pcs | Eff: {eff_pct}% | ₹{piece_val}")
-        st.rerun()
+        # Group slots by operation and save one row per unique operation
+        from collections import defaultdict
+        op_groups = defaultdict(lambda: {"hours": {}, "pieces": 0})
+        for hcol in HOUR_COLS:
+            op = op_vals.get(hcol)
+            if op is None:
+                continue  # lunch slot
+            pcs = h_vals.get(hcol, 0)
+            op_groups[op]["hours"][hcol] = pcs
+            op_groups[op]["pieces"] += pcs
+
+        if not op_groups:
+            st.error("No entries to save.")
+        else:
+            saved_ops = []
+            for op_name, data in op_groups.items():
+                op_info = style_ops[style_ops["Operation"] == op_name]
+                if op_info.empty:
+                    continue
+                op_tgt  = int(op_info["Target"].values[0])
+                op_rate = float(op_info["Rate_Rs"].values[0])
+                op_pcs  = data["pieces"]
+                op_eff  = round(op_pcs / op_tgt * 100, 1) if op_tgt > 0 else 0.0
+                op_val  = round(op_pcs * op_rate, 2)
+                # Build full hour columns (0 for hours not assigned to this op)
+                hour_row = {hcol: data["hours"].get(hcol, 0) for hcol in HOUR_COLS}
+                new_row = {
+                    "Date": str(pe_date),
+                    "Karigar_ID": k_row["Karigar_ID"],
+                    "Karigar_Name": k_row["Name"],
+                    "Challan_No": challan_no,
+                    "Style": pe_style,
+                    "Operation": op_name,
+                    **hour_row,
+                    "Total_Pieces": op_pcs,
+                    "Target": op_tgt,
+                    "Rate_Rs": op_rate,
+                    "Efficiency_%": op_eff,
+                    "Piece_Value_Rs": op_val,
+                }
+                st.session_state.production_log = pd.concat(
+                    [st.session_state.production_log, pd.DataFrame([new_row])], ignore_index=True)
+                saved_ops.append(f"{op_name}: {op_pcs} pcs ({op_eff}%) ₹{op_val}")
+            st.success(f"✅ Saved {len(saved_ops)} operation(s) for {k_row['Name']}:\n" + "\n".join(saved_ops))
+            st.rerun()
 
     # ── KARIGAR SUMMARY ────────────────────────────────────────────
     st.markdown("---")
