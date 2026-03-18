@@ -49,9 +49,9 @@ html,body,[class*="css"]{font-family:'IBM Plex Sans',sans-serif;}
 # ═══════════════════════════════════════════
 # CONSTANTS
 # ═══════════════════════════════════════════
-HOUR_COLS = ["H_09_10","H_10_11","H_11_12","H_12_13",
+HOUR_COLS = ["H_09_10","H_10_11","H_11_12","H_12_13","H_13_14",
              "H_14_15","H_15_16","H_16_17","H_17_18","H_18_19","H_19_20","H_20_21"]
-HOUR_LBLS = ["9:00-10:00","10:00-11:00","11:00-12:00","12:00-13:00",
+HOUR_LBLS = ["9:00-10:00","10:00-11:00","11:00-12:00","12:00-13:00","13:00-14:00",
              "14:00-15:00","15:00-16:00","16:00-17:00","17:00-18:00","18:00-19:00","19:00-20:00","20:00-21:00"]
 SIZE_COLS  = ["XL","XXL","3XL","4XL","5XL"]
 DATA_KEYS  = ["style_master","karigar_master","challan_master","production_log",
@@ -512,24 +512,64 @@ with tab_prod:
     # ── STEP 5: VERTICAL Hour-wise Entry ────────────────────────────
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry (Vertical)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box">Enter pieces produced in each time slot. Lunch 13:00–14:00 is skipped. Evening slots 19-20 and 20-21 included.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box">Enter pieces produced in each time slot. 🍽️ 13:00–14:00 is the lunch break (not counted). Evening slots 19–20 and 20–21 included.</div>', unsafe_allow_html=True)
 
     # Two columns: left = inputs (vertical), right = live running total
     inp_col, sum_col = st.columns([2, 1])
     h_vals = {}
 
     with inp_col:
-        for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
-            is_lunch = (hcol == "H_12_13")
-            label_text = f"🍽️ {hlbl} (Lunch break — not counted)" if is_lunch else f"🕐 {hlbl}"
-            row_c1, row_c2 = st.columns([2,1])
-            with row_c1:
-                st.markdown(
-                    f"<div style='padding:8px 4px;font-size:.88rem;font-weight:{'600' if not is_lunch else '400'};color:{'#1a3a52' if not is_lunch else '#9e9e9e'};border-bottom:1px solid #eee;'>{label_text}</div>",
-                    unsafe_allow_html=True)
-            with row_c2:
+        # Column header row
+        hdr1, hdr2, hdr3 = st.columns([3, 2, 2])
+        with hdr1: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 2px;border-bottom:2px solid #2c5aa0;'>Time Slot</div>", unsafe_allow_html=True)
+        with hdr2: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 2px;border-bottom:2px solid #2c5aa0;'>Operation</div>", unsafe_allow_html=True)
+        with hdr3: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 2px;border-bottom:2px solid #2c5aa0;'>Pieces</div>", unsafe_allow_html=True)
+
+        for idx, (hcol, hlbl) in enumerate(zip(HOUR_COLS, HOUR_LBLS)):
+            is_lunch = (hcol == "H_13_14")
+
+            rc1, rc2, rc3 = st.columns([3, 2, 2])
+
+            # Time label
+            with rc1:
                 if is_lunch:
-                    st.markdown("<div style='padding:6px 4px;color:#9e9e9e;font-size:.84rem;'>— break —</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div style='padding:7px 4px;font-size:.85rem;color:#9e9e9e;background:#fafafa;border-bottom:1px solid #eee;border-radius:3px;'>🍽️ {hlbl}<br><span style='font-size:.72rem;'>Lunch break</span></div>",
+                        unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        f"<div style='padding:7px 4px;font-size:.88rem;font-weight:600;color:#1a3a52;border-bottom:1px solid #eee;'>🕐 {hlbl}</div>",
+                        unsafe_allow_html=True)
+
+            # Operation selector — shown only for 9:00-10:00 (first slot), blank for others
+            with rc2:
+                if idx == 0:
+                    # First slot: show the operation selectbox inline
+                    sel_op_inline = st.selectbox(
+                        "",
+                        op_list,
+                        index=op_list.index(sel_op) if sel_op in op_list else 0,
+                        key="op_inline",
+                        label_visibility="collapsed"
+                    )
+                    # Update tgt/rate if user changed operation here
+                    if sel_op_inline != sel_op:
+                        sel_op   = sel_op_inline
+                        op_r     = style_ops[style_ops["Operation"] == sel_op].iloc[0]
+                        tgt_val  = int(op_r["Target"])
+                        rate_val = float(op_r["Rate_Rs"])
+                elif is_lunch:
+                    st.markdown("<div style='padding:7px 4px;color:#bdbdbd;font-size:.8rem;'>—</div>", unsafe_allow_html=True)
+                else:
+                    # Show the selected operation name as read-only label
+                    st.markdown(
+                        f"<div style='padding:7px 4px;font-size:.8rem;color:#546e7a;border-bottom:1px solid #eee;'>{sel_op}</div>",
+                        unsafe_allow_html=True)
+
+            # Piece input
+            with rc3:
+                if is_lunch:
+                    st.markdown("<div style='padding:7px 4px;color:#9e9e9e;font-size:.84rem;'>— break —</div>", unsafe_allow_html=True)
                     h_vals[hcol] = 0
                 else:
                     h_vals[hcol] = st.number_input(
@@ -541,36 +581,41 @@ with tab_prod:
     # Live running total on the right
     with sum_col:
         st.markdown('<div class="sec-hdr" style="text-align:center">📊 Live Total</div>', unsafe_allow_html=True)
-        total_pcs  = sum(h_vals.values())
-        eff_pct    = round(total_pcs / tgt_val * 100, 1) if tgt_val > 0 else 0.0
-        piece_val  = round(total_pcs * rate_val, 2)
+        total_pcs = sum(h_vals.values())
+        eff_pct   = round(total_pcs / tgt_val * 100, 1) if tgt_val > 0 else 0.0
+        piece_val = round(total_pcs * rate_val, 2)
 
-        # running per-hour table (read-only)
+        # Running per-hour table
         rows_html = ""
         running = 0
         for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
+            is_lunch_r = (hcol == "H_13_14")
             v = h_vals.get(hcol, 0)
             running += v
-            bg = "#f9fbe7" if v > 0 else ""
-            rows_html += f'<tr style="background:{bg}"><td>{hlbl}</td><td><b>{v}</b></td><td>{running}</td></tr>'
+            if is_lunch_r:
+                rows_html += f'<tr style="background:#fafafa;color:#9e9e9e;"><td>🍽️ {hlbl}</td><td colspan="2" style="text-align:center;font-size:.78rem;">lunch</td></tr>'
+            else:
+                bg = "#f9fbe7" if v > 0 else ""
+                rows_html += f'<tr style="background:{bg}"><td>{hlbl}</td><td><b>{v}</b></td><td>{running}</td></tr>'
 
         st.markdown(f"""
         <table class="hour-table">
-          <tr><th>Hour</th><th>Pieces</th><th>Running</th></tr>
+          <tr><th>Hour</th><th>Pcs</th><th>Total</th></tr>
           {rows_html}
         </table>""", unsafe_allow_html=True)
 
-        # Summary cards
         eff_color = "#2e7d32" if eff_pct>=100 else ("#f57c00" if eff_pct>=70 else "#c62828")
         st.markdown(f"""
         <div style="margin-top:10px;background:#1a3a5c;color:#fff;border-radius:8px;padding:12px;text-align:center;">
-          <div style="font-size:.72rem;opacity:.7;text-transform:uppercase;letter-spacing:.05em;">Total Pieces</div>
+          <div style="font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.05em;">Operation</div>
+          <div style="font-size:.95rem;font-weight:600;margin-bottom:6px;">{sel_op}</div>
+          <div style="font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.05em;">Total Pieces</div>
           <div style="font-size:2rem;font-weight:700;font-family:'IBM Plex Mono',monospace;">{total_pcs}</div>
-          <div style="font-size:.72rem;opacity:.7;margin-top:6px;">Efficiency</div>
+          <div style="font-size:.7rem;opacity:.7;margin-top:6px;">Efficiency</div>
           <div style="font-size:1.5rem;font-weight:700;color:{eff_color};">{eff_pct}%</div>
-          <div style="font-size:.72rem;opacity:.7;margin-top:6px;">Piece Value</div>
+          <div style="font-size:.7rem;opacity:.7;margin-top:6px;">Piece Value</div>
           <div style="font-size:1.3rem;font-weight:700;">₹{piece_val:,.0f}</div>
-          <div style="font-size:.72rem;opacity:.7;margin-top:6px;">Target</div>
+          <div style="font-size:.7rem;opacity:.7;margin-top:6px;">Target</div>
           <div style="font-size:1rem;">{tgt_val} pcs</div>
         </div>""", unsafe_allow_html=True)
 
