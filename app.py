@@ -53,9 +53,8 @@ HOUR_COLS = ["H_09_10","H_10_11","H_11_12","H_12_13","H_13_14",
              "H_14_15","H_15_16","H_16_17","H_17_18","H_18_19","H_19_20","H_20_21"]
 HOUR_LBLS = ["9:00-10:00","10:00-11:00","11:00-12:00","12:00-13:00","13:00-14:00",
              "14:00-15:00","15:00-16:00","16:00-17:00","17:00-18:00","18:00-19:00","19:00-20:00","20:00-21:00"]
-SIZE_COLS  = ["XL","XXL","3XL","4XL","5XL"]
 DATA_KEYS  = ["style_master","karigar_master","challan_master","production_log",
-              "employee_master","karigar_attendance","operating_attendance","challan_sizes"]
+              "employee_master","karigar_attendance","operating_attendance"]
 DEFAULT_PW = hashlib.sha256("admin123".encode()).hexdigest()
 
 # ═══════════════════════════════════════════
@@ -127,10 +126,6 @@ TEMPLATES = {
         {"Challan_No":"10220-2526","Style":"1894YKDGREEN","Party":"Aashirwad Garments",
          "Total_Qty":376,"Received_Qty":0,"Deposit_Rs":0.0,"Rate_Per_Pc":35,
          "Date":"2026-02-25","Delivery_By":"2026-03-07"},
-    ]),
-    "challan_sizes": pd.DataFrame([
-        {"Challan_No":"10220-2526","Style":"1894YKDGREEN",
-         "XL":20,"XXL":50,"3XL":75,"4XL":90,"5XL":141},
     ]),
     "production_log": pd.DataFrame([{
         "Date":"2026-02-25","Karigar_ID":"K001","Karigar_Name":"Ramesh Kumar",
@@ -259,10 +254,6 @@ def init_state():
             {"Challan_No":"10220-2526","Style":"1894YKDGREEN","Party":"Aashirwad Garments",
              "Total_Qty":376,"Received_Qty":0,"Deposit_Rs":0.0,
              "Rate_Per_Pc":35,"Date":"2026-02-25","Delivery_By":"2026-03-07"},
-        ])
-    if "challan_sizes" not in st.session_state:
-        st.session_state.challan_sizes = pd.DataFrame([
-            {"Challan_No":"10220-2526","Style":"1894YKDGREEN","XL":20,"XXL":50,"3XL":75,"4XL":90,"5XL":141},
         ])
     if "production_log" not in st.session_state:
         st.session_state.production_log = pd.DataFrame(columns=[
@@ -696,126 +687,91 @@ with tab_prod:
 
 
 # ══════════════════════════════════════════════════════════
-# TAB 3 ─ CHALLAN MANAGEMENT (Simplified)
+# TAB 3 ─ CHALLAN MANAGEMENT
 # ══════════════════════════════════════════════════════════
 with tab_challan:
     st.markdown('<div class="sec-hdr">🧾 Challan Management</div>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box">Manage challans — track received quantity and deposit. Update any challan directly from the register.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box">Add challans, track received quantity and deposit. Select any challan below to update it.</div>', unsafe_allow_html=True)
 
     import_section("challan_master", "challan_master", "Challan Master")
-    import_section("challan_sizes",  "challan_sizes",  "Challan Size Chart (XL/XXL/3XL/4XL/5XL)")
 
     # ── ADD NEW CHALLAN ──────────────────────────────────────────
     with st.expander("➕ Add New Challan", expanded=True):
         with st.form("add_ch", clear_on_submit=True):
-            ca1,ca2 = st.columns(2)
+            ca1, ca2 = st.columns(2)
             with ca1:
-                c_no    = st.text_input("Challan No *",        placeholder="e.g. 10220-2526")
-                c_style = st.selectbox("Style *",
-                    sm["Style"].unique().tolist() if not sm.empty else [""])
-                c_party = st.text_input("Party Name",          placeholder="e.g. Aashirwad Garments")
-                c_date  = st.date_input("Issue Date",           value=date.today())
-                c_deliv = st.date_input("Delivery Before",      value=date.today()+timedelta(days=10))
+                c_no    = st.text_input("Challan No *", placeholder="e.g. 10220-2526")
+                c_style = st.selectbox("Style *", sm["Style"].unique().tolist() if not sm.empty else [""])
+                c_party = st.text_input("Party Name",   placeholder="e.g. Aashirwad Garments")
             with ca2:
-                c_rate  = st.number_input("Party Rate/Pc (₹)", min_value=0.0, step=1.0, value=35.0)
-                c_dep   = st.number_input("Deposit (₹)",       min_value=0.0, step=100.0, value=0.0)
-                c_rec   = st.number_input("Received Qty",       min_value=0,   step=1,    value=0)
-                st.markdown("**Sizes (leave 0 if not used)**")
-                sb = st.columns(5)
-                with sb[0]: sz_xl  = st.number_input("XL",  min_value=0,step=1,value=0,key="ns_xl")
-                with sb[1]: sz_xxl = st.number_input("XXL", min_value=0,step=1,value=0,key="ns_xxl")
-                with sb[2]: sz_3xl = st.number_input("3XL", min_value=0,step=1,value=0,key="ns_3xl")
-                with sb[3]: sz_4xl = st.number_input("4XL", min_value=0,step=1,value=0,key="ns_4xl")
-                with sb[4]: sz_5xl = st.number_input("5XL", min_value=0,step=1,value=0,key="ns_5xl")
+                c_qty   = st.number_input("Total Qty *", min_value=1, step=1, value=100)
+                c_rec   = st.number_input("Received Qty", min_value=0, step=1, value=0)
+                c_dep   = st.number_input("Deposit (₹)", min_value=0.0, step=100.0, value=0.0)
+                c_rate  = st.number_input("Rate/Pc (₹)", min_value=0.0, step=1.0, value=35.0)
+            c_date  = st.date_input("Issue Date", value=date.today())
 
             if st.form_submit_button("✅ Add Challan", use_container_width=True):
                 if not c_no:
                     st.error("Challan No is required")
                 else:
-                    tot = sz_xl+sz_xxl+sz_3xl+sz_4xl+sz_5xl
                     st.session_state.challan_master = pd.concat([
                         st.session_state.challan_master,
                         pd.DataFrame([{"Challan_No":c_no,"Style":c_style,"Party":c_party,
-                            "Total_Qty":max(tot,1),"Received_Qty":int(c_rec),
+                            "Total_Qty":int(c_qty),"Received_Qty":int(c_rec),
                             "Deposit_Rs":float(c_dep),"Rate_Per_Pc":float(c_rate),
-                            "Date":str(c_date),"Delivery_By":str(c_deliv)}])
+                            "Date":str(c_date),"Delivery_By":""}])
                     ], ignore_index=True)
-                    if tot > 0:
-                        st.session_state.challan_sizes = pd.concat([
-                            st.session_state.challan_sizes,
-                            pd.DataFrame([{"Challan_No":c_no,"Style":c_style,
-                                "XL":sz_xl,"XXL":sz_xxl,"3XL":sz_3xl,"4XL":sz_4xl,"5XL":sz_5xl}])
-                        ], ignore_index=True)
-                    st.success(f"✅ Challan {c_no} added — {max(tot,1)} pcs")
+                    st.success(f"✅ Challan {c_no} added — {c_qty} pcs")
                     st.rerun()
 
-    # ── REGISTER with inline UPDATE ─────────────────────────────
-    st.markdown('<div class="sec-hdr">📋 Challan Register — Click a row to update</div>', unsafe_allow_html=True)
+    # ── REGISTER ────────────────────────────────────────────────
+    st.markdown('<div class="sec-hdr">📋 Challan Register</div>', unsafe_allow_html=True)
     cm = st.session_state.challan_master.copy()
     if not cm.empty:
-        cm["Pending"] = safe_num(cm["Total_Qty"]) - safe_num(cm.get("Received_Qty",0))
-        cm["Status"]  = cm.apply(lambda r:
-            "✅ Complete" if r["Pending"]<=0
-            else (f"⚠️ OVERDUE" if str(r.get("Delivery_By","")) < today_str
-            else f"⏳ {int(r['Pending'])} pending"), axis=1)
+        cm["Pending"] = safe_num(cm["Total_Qty"]) - safe_num(cm.get("Received_Qty", 0))
+        cm["Status"]  = cm["Pending"].apply(lambda x: "✅ Complete" if x <= 0 else f"⏳ {int(x)} pending")
 
-        # Metrics
-        sx1,sx2,sx3,sx4 = st.columns(4)
-        sx1.metric("Total Challans",  len(cm))
-        sx2.metric("Completed",       len(cm[cm["Pending"]<=0]))
-        sx3.metric("In Progress",     len(cm[cm["Pending"]>0]))
-        lv = (safe_num(cm["Total_Qty"]) * safe_num(cm.get("Rate_Per_Pc",0))).sum()
+        sx1, sx2, sx3, sx4 = st.columns(4)
+        sx1.metric("Total Challans",     len(cm))
+        sx2.metric("Completed",          len(cm[cm["Pending"] <= 0]))
+        sx3.metric("In Progress",        len(cm[cm["Pending"] > 0]))
+        lv = (safe_num(cm["Total_Qty"]) * safe_num(cm.get("Rate_Per_Pc", 0))).sum()
         sx4.metric("Total Labour Value", f"₹{lv:,.0f}")
 
-        show_c=[c for c in["Challan_No","Style","Party","Total_Qty","Received_Qty","Pending","Status","Rate_Per_Pc","Deposit_Rs","Date","Delivery_By"] if c in cm.columns]
+        show_c = [c for c in ["Challan_No","Style","Party","Total_Qty","Received_Qty","Pending","Status","Rate_Per_Pc","Deposit_Rs","Date"] if c in cm.columns]
         st.dataframe(cm[show_c], use_container_width=True, hide_index=True)
 
-        # ── INLINE UPDATE (no separate section needed) ──────────
-        st.markdown('<div class="sec-hdr">✏️ Update Challan (Received Qty / Deposit)</div>', unsafe_allow_html=True)
-        upd_ch = st.selectbox("Select Challan to Update", cm["Challan_No"].tolist(), key="upd_ch")
-        sel_row = cm[cm["Challan_No"]==upd_ch]
+        # ── UPDATE ───────────────────────────────────────────────
+        st.markdown('<div class="sec-hdr">✏️ Update Challan</div>', unsafe_allow_html=True)
+        upd_ch  = st.selectbox("Select Challan", cm["Challan_No"].tolist(), key="upd_ch")
+        sel_row = cm[cm["Challan_No"] == upd_ch]
         if not sel_row.empty:
             sr = sel_row.iloc[0]
-            u1,u2,u3 = st.columns(3)
+            u1, u2, u3, u4 = st.columns(4)
             with u1:
-                new_rec = st.number_input("Received Qty",
-                    min_value=0, step=1,
-                    value=int(safe_num(pd.Series([sr.get("Received_Qty",0)])).iloc[0]),
-                    key="u_rec")
+                new_qty = st.number_input("Total Qty", min_value=1, step=1,
+                    value=int(safe_num(pd.Series([sr.get("Total_Qty", 1)])).iloc[0]), key="u_qty")
             with u2:
-                new_dep = st.number_input("Deposit (₹)",
-                    min_value=0.0, step=100.0,
-                    value=float(safe_num(pd.Series([sr.get("Deposit_Rs",0)])).iloc[0]),
-                    key="u_dep")
+                new_rec = st.number_input("Received Qty", min_value=0, step=1,
+                    value=int(safe_num(pd.Series([sr.get("Received_Qty", 0)])).iloc[0]), key="u_rec")
             with u3:
-                new_rate = st.number_input("Rate/Pc (₹)",
-                    min_value=0.0, step=1.0,
-                    value=float(safe_num(pd.Series([sr.get("Rate_Per_Pc",0)])).iloc[0]),
-                    key="u_rate")
+                new_dep = st.number_input("Deposit (₹)", min_value=0.0, step=100.0,
+                    value=float(safe_num(pd.Series([sr.get("Deposit_Rs", 0)])).iloc[0]), key="u_dep")
+            with u4:
+                new_rate = st.number_input("Rate/Pc (₹)", min_value=0.0, step=1.0,
+                    value=float(safe_num(pd.Series([sr.get("Rate_Per_Pc", 0)])).iloc[0]), key="u_rate")
+
             if st.button("💾 Update Challan", key="do_upd", use_container_width=True):
-                idx = st.session_state.challan_master[st.session_state.challan_master["Challan_No"]==upd_ch].index
-                if len(idx)>0:
-                    st.session_state.challan_master.loc[idx[0],"Received_Qty"] = new_rec
-                    st.session_state.challan_master.loc[idx[0],"Deposit_Rs"]   = new_dep
-                    st.session_state.challan_master.loc[idx[0],"Rate_Per_Pc"]  = new_rate
-                    st.success(f"✅ Updated {upd_ch} — Received: {new_rec}, Deposit: ₹{new_dep}, Rate: ₹{new_rate}")
+                idx = st.session_state.challan_master[st.session_state.challan_master["Challan_No"] == upd_ch].index
+                if len(idx) > 0:
+                    st.session_state.challan_master.loc[idx[0], "Total_Qty"]    = new_qty
+                    st.session_state.challan_master.loc[idx[0], "Received_Qty"] = new_rec
+                    st.session_state.challan_master.loc[idx[0], "Deposit_Rs"]   = new_dep
+                    st.session_state.challan_master.loc[idx[0], "Rate_Per_Pc"]  = new_rate
+                    st.success(f"✅ {upd_ch} updated — Qty: {new_qty}, Received: {new_rec}, Deposit: ₹{new_dep}, Rate: ₹{new_rate}")
                     st.rerun()
 
-    # ── SIZE CHART ──────────────────────────────────────────────
-    cs = st.session_state.challan_sizes.copy()
-    if not cs.empty:
-        st.markdown('<div class="sec-hdr">📐 Size Chart (MI Color/Size)</div>', unsafe_allow_html=True)
-        for sc2 in SIZE_COLS:
-            if sc2 in cs.columns: cs[sc2] = safe_num(cs[sc2]).astype(int)
-        cs["Total"] = sum(safe_num(cs.get(s,0)) for s in SIZE_COLS)
-        st.dataframe(cs, use_container_width=True, hide_index=True)
-        totals = {s: int(safe_num(cs.get(s,0)).sum()) for s in SIZE_COLS}
-        pills  = " ".join([f'<span class="sz-pill sz-{s.lower()}">{s}: {v}</span>' for s,v in totals.items()])
-        st.markdown(f"**Totals:** {pills} &nbsp; Grand Total: <b>{sum(totals.values())}</b>", unsafe_allow_html=True)
-
-    e1,e2 = st.columns(2)
-    with e1: st.download_button("📥 Challans Excel",  to_excel_bytes(st.session_state.challan_master), "challans.xlsx")
-    with e2: st.download_button("📥 Size Chart Excel",to_excel_bytes(st.session_state.challan_sizes),  "challan_sizes.xlsx")
+    st.download_button("📥 Export Challans (Excel)", to_excel_bytes(st.session_state.challan_master), "challans.xlsx")
 
 
 # ══════════════════════════════════════════════════════════
