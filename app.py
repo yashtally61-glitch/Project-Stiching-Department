@@ -64,24 +64,8 @@ def safe_num(s): return pd.to_numeric(s, errors='coerce').fillna(0)
 def hash_pw(pw): return hashlib.sha256(pw.encode()).hexdigest()
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
-    """Export as proper Excel format (.xlsx)"""
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Data")
-        # Auto-adjust column widths
-        for column in writer.sheets["Data"].columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            writer.sheets["Data"].column_dimensions[column_letter].width = adjusted_width
-    buf.seek(0)
-    return buf.getvalue()
+    """Export as CSV format (universal Excel compatibility)"""
+    return df.to_csv(index=False).encode()
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode()
