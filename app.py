@@ -64,13 +64,24 @@ def safe_num(s): return pd.to_numeric(s, errors='coerce').fillna(0)
 def hash_pw(pw): return hashlib.sha256(pw.encode()).hexdigest()
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
+    """Export as proper Excel format (.xlsx)"""
     buf = io.BytesIO()
-    try:
-        with pd.ExcelWriter(buf, engine="openpyxl") as w:
-            df.to_excel(w, index=False)
-        return buf.getvalue()
-    except:
-        return df.to_csv(index=False).encode()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Data")
+        # Auto-adjust column widths
+        for column in writer.sheets["Data"].columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            writer.sheets["Data"].column_dimensions[column_letter].width = adjusted_width
+    buf.seek(0)
+    return buf.getvalue()
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode()
@@ -966,6 +977,67 @@ with tab_att:
                     "Normal_Pay":np_,"OT_Hours":oh,"OT_Pay":op3,"Total_Pay":tp}
                 st.session_state.karigar_attendance=pd.concat([st.session_state.karigar_attendance,pd.DataFrame([na])],ignore_index=True)
                 st.success(f"✅ {er2['Name']} | {py}h payable | ₹{tp}")
+
+    # ── AUTO-CALCULATE ATTENDANCE FROM PRODUCTION ENTRIES ──────────────
+    with st.expander("🔄 Auto-Calculate Attendance from Production Entries",expanded=False):
+        st.markdown("""
+        <div class="info-box">
+        This calculates attendance based on the hour-wise entries you fill in the Production tab.
+        It tracks which hours each Karigar worked and generates attendance records.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("📊 Calculate Attendance from Production Log",use_container_width=True):
+            pl = st.session_state.production_log
+            if pl.empty:
+                st.warning("No production entries found.")
+            else:
+                # Group by Date and Karigar_ID, calculate hours worked
+                att_records = []
+                for (d, kid), group in pl.groupby(["Date", "Karigar_ID"]):
+                    kar_name = group["Karigar_Name"].iloc[0] if "Karigar_Name" in group.columns else f"K-{kid}"
+                    
+                    # Count non-zero hour slots (9-20 hours, excluding 13-14 lunch)
+                    hour_cols_worked = [h for h in HOUR_COLS if h != "H_13_14" and any(group[h].astype(str).str.strip() != "0")]
+                    hours_worked = len(hour_cols_worked)
+                    
+                    if hours_worked > 0:
+                        # Get daily rate
+                        emp_rec = st.session_state.employee_master[st.session_state.employee_master["E_Code"] == kid]
+                        if not emp_rec.empty:
+                            daily_rate = float(emp_rec["Daily_Rate_Rs"].values[0])
+                            hourly_rate = daily_rate / 8
+                            normal_pay = hours_worked * hourly_rate if hours_worked <= 8 else 8 * hourly_rate
+                            ot_hours = max(hours_worked - 8, 0)
+                            ot_pay = ot_hours * hourly_rate * ot_m
+                            total_pay = normal_pay + ot_pay
+                            
+                            att_records.append({
+                                "Date": str(d),
+                                "E_Code": kid,
+                                "Name": kar_name,
+                                "In_Punch": "09:00",
+                                "Out_Punch": "18:00",
+                                "Total_Presence_Hrs": float(hours_worked),
+                                "Lunch_Deduction_Hrs": 1.0 if hours_worked >= 9 else 0.0,
+                                "Payable_Hrs": float(max(hours_worked - 1, 0)) if hours_worked >= 9 else float(hours_worked),
+                                "Hourly_Rate_Rs": hourly_rate,
+                                "Normal_Pay": normal_pay,
+                                "OT_Hours": ot_hours,
+                                "OT_Pay": ot_pay,
+                                "Total_Pay": total_pay
+                            })
+                
+                if att_records:
+                    new_att = pd.DataFrame(att_records)
+                    st.session_state.karigar_attendance = pd.concat(
+                        [st.session_state.karigar_attendance, new_att], 
+                        ignore_index=True
+                    ).drop_duplicates(subset=["Date", "E_Code"], keep="last")
+                    st.success(f"✅ Generated {len(att_records)} attendance records from production entries!")
+                    st.dataframe(new_att, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No working hours found in production entries.")
 
     if not st.session_state.karigar_attendance.empty:
         af=st.date_input("Filter Date",value=date.today(),key="att_f")
