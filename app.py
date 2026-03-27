@@ -64,8 +64,46 @@ def safe_num(s): return pd.to_numeric(s, errors='coerce').fillna(0)
 def hash_pw(pw): return hashlib.sha256(pw.encode()).hexdigest()
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
-    """Export as CSV format (universal Excel compatibility)"""
-    return df.to_csv(index=False).encode()
+    """Export as proper Excel format (.xlsx) using xlsxwriter engine"""
+    buf = io.BytesIO()
+    try:
+        # Use xlsxwriter which doesn't require openpyxl
+        with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Data", startrow=0)
+            # Get workbook and worksheet
+            workbook = writer.book
+            worksheet = writer.sheets["Data"]
+            
+            # Format header
+            header_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#2c5aa0',
+                'font_color': 'white',
+                'border': 1,
+                'align': 'center',
+                'valign': 'vcenter'
+            })
+            
+            # Apply header formatting
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+            
+            # Auto-adjust column widths
+            for idx, col in enumerate(df.columns):
+                max_length = max(
+                    df[col].astype(str).apply(len).max(),
+                    len(str(col))
+                ) + 2
+                worksheet.set_column(idx, idx, min(max_length, 50))
+            
+            worksheet.set_row(0, 20)  # Header row height
+        
+        buf.seek(0)
+        return buf.getvalue()
+    except Exception as e:
+        # If xlsxwriter fails, return CSV as fallback
+        st.warning(f"⚠️ Excel export issue: {str(e)[:50]}... Using CSV format instead.")
+        return df.to_csv(index=False).encode()
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode()
