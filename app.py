@@ -1266,24 +1266,28 @@ with tab_op:
     import_section("operating_attendance","operating_attendance","Operating Staff Attendance")
     eo2=st.session_state.employee_master[st.session_state.employee_master["Type"]=="Operating"]
     oo2={f"{r['E_Code']} – {r['Name']}":r for _,r in eo2.iterrows()}
-    with st.expander("✏️ Manual Entry",expanded=True):
-        with st.form("op_form",clear_on_submit=True):
-            oa1,oa2,oa3=st.columns(3)
-            with oa1: od=st.date_input("Date",value=date.today(),key="od2"); oem=st.selectbox("Employee",list(oo2.keys()),key="oe2")
-            with oa2: oin=st.text_input("In",value="09:00",key="oin2"); oout=st.text_input("Out",value="18:00",key="oout2")
-            with oa3:
-                er3=oo2[oem]; st.info(f"Hourly: ₹{er3['Hourly_Rate_Rs']}")
-            if st.form_submit_button("Save"):
-                try:
-                    fmt3="%H:%M"
-                    hrs3=round(int((datetime.strptime(oout.strip(),fmt3)-datetime.strptime(oin.strip(),fmt3)).total_seconds())/3600,2)
-                except: hrs3=0
-                hr3=float(er3["Hourly_Rate_Rs"]); tp3=round(hrs3*hr3,2)
-                st.session_state.operating_attendance=pd.concat([st.session_state.operating_attendance,pd.DataFrame([{
-                    "Date":str(od),"E_Code":er3["E_Code"],"Name":er3["Name"],
-                    "In_Punch":oin,"Out_Punch":oout,"Total_Hours":hrs3,"Hourly_Rate_Rs":hr3,"Total_Pay":tp3
-                }])],ignore_index=True)
-                st.success(f"✅ {er3['Name']} | {hrs3}h | ₹{tp3}")
+    
+    if len(oo2) == 0:
+        st.warning("⚠️ No Operating staff found. Add Operating staff in Master Data → Employee Master tab first.")
+    else:
+        with st.expander("✏️ Manual Entry",expanded=True):
+            with st.form("op_form",clear_on_submit=True):
+                oa1,oa2,oa3=st.columns(3)
+                with oa1: od=st.date_input("Date",value=date.today(),key="od2"); oem=st.selectbox("Employee",list(oo2.keys()),key="oe2")
+                with oa2: oin=st.text_input("In",value="09:00",key="oin2"); oout=st.text_input("Out",value="18:00",key="oout2")
+                with oa3:
+                    er3=oo2[oem]; st.info(f"Hourly: ₹{er3['Hourly_Rate_Rs']}")
+                if st.form_submit_button("Save"):
+                    try:
+                        fmt3="%H:%M"
+                        hrs3=round(int((datetime.strptime(oout.strip(),fmt3)-datetime.strptime(oin.strip(),fmt3)).total_seconds())/3600,2)
+                    except: hrs3=0
+                    hr3=float(er3["Hourly_Rate_Rs"]); tp3=round(hrs3*hr3,2)
+                    st.session_state.operating_attendance=pd.concat([st.session_state.operating_attendance,pd.DataFrame([{
+                        "Date":str(od),"E_Code":er3["E_Code"],"Name":er3["Name"],
+                        "In_Punch":oin,"Out_Punch":oout,"Total_Hours":hrs3,"Hourly_Rate_Rs":hr3,"Total_Pay":tp3
+                    }])],ignore_index=True)
+                    st.success(f"✅ {er3['Name']} | {hrs3}h | ₹{tp3}")
 
 
 # ══════════════════════════════════════════════════════════
