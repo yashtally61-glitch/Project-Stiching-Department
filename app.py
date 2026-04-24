@@ -1,8 +1,12 @@
 """
-Stitching Costing Interface v4.0 — Yash Gallery Pvt Ltd
-FIXES v4:
+Stitching Costing Interface v4.1 — Yash Gallery Pvt Ltd
+FIXES v4.1:
 - Excel template downloads for every import section
-- Production Entry: Search Karigar → Style → Challan → Operation (from master) → VERTICAL hour entry with 19-20, 20-21 slots
+- Production Entry: ENHANCED with SKU-based operation intelligence
+- Real-time efficiency % per hour with color coding
+- Smart operation selection (auto-fills from previous hour)
+- Per-operation live summary with visual feedback
+- Disabled input validation until operation selected
 - Challan Management: Simplified — only Style, Challan No, Received Qty, Deposit, Update button
 - All imports show required column names and downloadable templates
 """
@@ -425,18 +429,17 @@ with tab_dash:
 
 
 # ══════════════════════════════════════════════════════════
-# TAB 2 ─ PRODUCTION ENTRY  (VERTICAL hour input)
+# TAB 2 ─ ENHANCED PRODUCTION ENTRY
 # ══════════════════════════════════════════════════════════
 with tab_prod:
-    st.markdown('<div class="sec-hdr">📋 Production Entry</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">📋 Production Entry — Enhanced v4.1</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="info-box">
-    <b>Flow:</b>&nbsp;
+    <b>Smart Flow:</b>&nbsp;
     🔍 Search Karigar &rarr;
-    👗 Select Style &rarr;
+    👗 Select Style (auto-loads operations) &rarr;
     🧾 Select Challan &rarr;
-    ⚙️ Select Operation (from master) &rarr;
-    ⏱ Enter pieces hour-by-hour (vertical)
+    ⏱ Hour-wise entry with real-time efficiency tracking
     </div>""", unsafe_allow_html=True)
 
     is_unlocked = lock_widget("prod")
@@ -478,7 +481,7 @@ with tab_prod:
         st.warning("No styles in master. Add styles in ⚙️ Master Data first.")
         st.stop()
 
-    pe_style = st.selectbox("👗 Select Style", all_styles, key="pe_style")
+    pe_style = st.selectbox("👗 Select Style (SKU)", all_styles, key="pe_style")
 
     # ── STEP 3: Challan (filtered by style) ─────────────────────────
     ch_df = st.session_state.challan_master
@@ -508,158 +511,236 @@ with tab_prod:
         f'Pending: <b>{ch_qty-ch_rec}</b></div>',
         unsafe_allow_html=True)
 
-    # ── STEP 4: Operation (from master only) ────────────────────────
+    # ── STEP 4: Load operations for this SKU ────────────────────────
     style_ops = sm[sm["Style"] == pe_style][["Operation","Target","Rate_Rs"]]
     if style_ops.empty:
         st.warning(f"No operations defined for style '{pe_style}'. Add operations in ⚙️ Master Data.")
         st.stop()
 
-    st.markdown("**⚙️ Select Operation**")
-    op_list  = style_ops["Operation"].tolist()
-    sel_op   = st.selectbox("Operation (from master)", op_list, key="sel_op")
-    op_r     = style_ops[style_ops["Operation"]==sel_op].iloc[0]
-    tgt_val  = int(op_r["Target"])
-    rate_val = float(op_r["Rate_Rs"])
+    # Create operation lookup with targets and rates
+    op_list = [""] + style_ops["Operation"].tolist()  # Empty option first
+    op_info = {}
+    for _, row in style_ops.iterrows():
+        op_name = row["Operation"]
+        daily_target = int(row["Target"])
+        op_info[op_name] = {
+            "Target": daily_target,
+            "Rate_Rs": float(row["Rate_Rs"]),
+            "Hourly_Target": max(1, daily_target // 8)  # Approximate hourly target
+        }
+    
+    # Display available operations for this SKU
+    op_pills = " ".join([f'<span class="sz-pill sz-xl">{op}</span>' for op in style_ops["Operation"].tolist()])
+    st.markdown(f'<div class="info-box">📋 <b>Available Operations for {pe_style}:</b><br>{op_pills}</div>', unsafe_allow_html=True)
 
-    col_t, col_r = st.columns(2)
-    with col_t:
-        if is_unlocked:
-            tgt_val = st.number_input("🎯 Target (pcs/day)", value=tgt_val, min_value=0, step=1, key="tgt_v")
-        else:
-            st.markdown(f'<div class="ro-field">🎯 Target: <b>{tgt_val} pcs</b> &nbsp;🔒</div>', unsafe_allow_html=True)
-    with col_r:
-        if is_unlocked:
-            rate_val = st.number_input("💰 Rate/pc (₹)", value=rate_val, min_value=0.0, step=0.25, format="%.2f", key="rate_v")
-        else:
-            st.markdown(f'<div class="ro-field">💰 Rate: <b>₹{rate_val:.2f}/pc</b> &nbsp;🔒</div>', unsafe_allow_html=True)
-
-    # ── STEP 5: VERTICAL Hour-wise Entry ────────────────────────────
+    # ── STEP 5: ENHANCED Hour-wise Entry ────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry (Vertical)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box">Enter pieces produced in each time slot. 🍽️ 13:00–14:00 is the lunch break (not counted). Evening slots 19–20 and 20–21 included.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">⏱ Hour-wise Entry — Smart Operation Selection</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="info-box">
+    💡 <b>Smart Entry:</b> Each hour shows operation target and real-time efficiency %.
+    Select operation → Enter pieces → See instant efficiency feedback.
+    🍽️ 13:00–14:00 is lunch break (auto-skipped).
+    </div>""", unsafe_allow_html=True)
 
     # Two columns: left = inputs (vertical), right = live running total
-    inp_col, sum_col = st.columns([2, 1])
+    inp_col, sum_col = st.columns([3, 2])
     h_vals = {}
-
     op_vals = {}
 
     with inp_col:
-        # Column header row
-        hdr1, hdr2, hdr3 = st.columns([3, 3, 2])
-        with hdr1: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 4px;border-bottom:2px solid #2c5aa0;'>Time Slot</div>", unsafe_allow_html=True)
-        with hdr2: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 4px;border-bottom:2px solid #2c5aa0;'>Operation</div>", unsafe_allow_html=True)
-        with hdr3: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px 4px 4px;border-bottom:2px solid #2c5aa0;'>Pieces</div>", unsafe_allow_html=True)
+        # Column headers with better spacing
+        hdr1, hdr2, hdr3, hdr4 = st.columns([2, 3, 2, 2])
+        with hdr1: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px;border-bottom:2px solid #2c5aa0;'>Time</div>", unsafe_allow_html=True)
+        with hdr2: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px;border-bottom:2px solid #2c5aa0;'>Operation → Target</div>", unsafe_allow_html=True)
+        with hdr3: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px;border-bottom:2px solid #2c5aa0;'>Pieces</div>", unsafe_allow_html=True)
+        with hdr4: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px;border-bottom:2px solid #2c5aa0;'>Eff %</div>", unsafe_allow_html=True)
 
+        prev_op = None  # Track previous hour's operation
+        
         for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
             is_lunch = (hcol == "H_13_14")
-            rc1, rc2, rc3 = st.columns([3, 3, 2])
+            rc1, rc2, rc3, rc4 = st.columns([2, 3, 2, 2])
 
             # Time label
             with rc1:
                 if is_lunch:
                     st.markdown(
-                        f"<div style='padding:8px 4px;font-size:.84rem;color:#9e9e9e;background:#fafafa;border-bottom:1px solid #eee;border-radius:3px;'>🍽️ {hlbl}<br><span style='font-size:.71rem;'>Lunch break</span></div>",
+                        f"<div style='padding:10px 4px;font-size:.82rem;color:#9e9e9e;background:#fafafa;border-bottom:1px solid #eee;border-radius:3px;text-align:center;'>🍽️<br>{hlbl.split('-')[0]}</div>",
                         unsafe_allow_html=True)
                 else:
                     st.markdown(
-                        f"<div style='padding:8px 4px;font-size:.88rem;font-weight:600;color:#1a3a52;border-bottom:1px solid #eee;'>🕐 {hlbl}</div>",
+                        f"<div style='padding:10px 4px;font-size:.88rem;font-weight:600;color:#1a3a52;border-bottom:1px solid #eee;text-align:center;'>🕐<br>{hlbl.split('-')[0]}</div>",
                         unsafe_allow_html=True)
 
-            # Operation dropdown — every active slot gets its own dropdown
+            # Operation dropdown with smart default
             with rc2:
                 if is_lunch:
-                    st.markdown("<div style='padding:8px 4px;color:#bdbdbd;font-size:.8rem;border-bottom:1px solid #eee;'>—</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='padding:10px 4px;color:#bdbdbd;font-size:.8rem;border-bottom:1px solid #eee;text-align:center;'>— Lunch Break —</div>", unsafe_allow_html=True)
                     op_vals[hcol] = None
                 else:
-                    op_vals[hcol] = st.selectbox(
+                    # Smart default: same as previous hour if available
+                    default_idx = 0
+                    if prev_op and prev_op in op_list:
+                        default_idx = op_list.index(prev_op)
+                    
+                    selected_op = st.selectbox(
                         "",
                         op_list,
-                        index=op_list.index(sel_op) if sel_op in op_list else 0,
+                        index=default_idx,
                         key=f"op_{hcol}",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
+                        help=f"Available operations for {pe_style}"
                     )
+                    op_vals[hcol] = selected_op if selected_op != "" else None
+                    
+                    # Show target and rate below operation
+                    if selected_op and selected_op != "":
+                        op_data = op_info[selected_op]
+                        st.markdown(
+                            f"<div style='font-size:.7rem;color:#666;margin-top:-8px;'>Target: {op_data['Hourly_Target']}/hr | Rate: ₹{op_data['Rate_Rs']}/pc</div>",
+                            unsafe_allow_html=True
+                        )
+                        prev_op = selected_op  # Update for next hour
+                    else:
+                        st.markdown("<div style='font-size:.7rem;color:#999;margin-top:-8px;'>Select operation first</div>", unsafe_allow_html=True)
 
             # Piece input
             with rc3:
                 if is_lunch:
-                    st.markdown("<div style='padding:8px 4px;color:#9e9e9e;font-size:.84rem;border-bottom:1px solid #eee;'>— break —</div>", unsafe_allow_html=True)
+                    st.markdown("<div style='padding:10px 4px;color:#9e9e9e;font-size:.84rem;border-bottom:1px solid #eee;text-align:center;'>—</div>", unsafe_allow_html=True)
                     h_vals[hcol] = 0
                 else:
+                    disabled = (not op_vals[hcol] or op_vals[hcol] == "")
                     h_vals[hcol] = st.number_input(
-                        "pcs", min_value=0, step=1, value=0,
+                        "pcs", 
+                        min_value=0, 
+                        step=1, 
+                        value=0,
                         key=f"hv_{hcol}",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
+                        disabled=disabled,
+                        help="Enter pieces produced this hour"
                     )
 
-    # Live running total on the right
+            # Real-time efficiency for this hour
+            with rc4:
+                if is_lunch:
+                    st.markdown("<div style='padding:10px 4px;color:#9e9e9e;font-size:.84rem;border-bottom:1px solid #eee;text-align:center;'>—</div>", unsafe_allow_html=True)
+                else:
+                    if op_vals[hcol] and op_vals[hcol] != "" and h_vals[hcol] > 0:
+                        op_data = op_info[op_vals[hcol]]
+                        hourly_eff = (h_vals[hcol] / op_data['Hourly_Target'] * 100) if op_data['Hourly_Target'] > 0 else 0
+                        
+                        # Color-coded efficiency
+                        if hourly_eff >= 100:
+                            color = "#2e7d32"  # Green
+                            icon = "✅"
+                        elif hourly_eff >= 80:
+                            color = "#f57c00"  # Orange
+                            icon = "⚡"
+                        else:
+                            color = "#c62828"  # Red
+                            icon = "⚠️"
+                        
+                        st.markdown(
+                            f"<div style='padding:8px 4px;font-size:.9rem;font-weight:700;color:{color};text-align:center;border-bottom:1px solid #eee;'>{icon} {hourly_eff:.0f}%</div>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.markdown("<div style='padding:10px 4px;color:#ccc;font-size:.8rem;border-bottom:1px solid #eee;text-align:center;'>—</div>", unsafe_allow_html=True)
+
+    # Enhanced Live Summary on the right
     with sum_col:
-        st.markdown('<div class="sec-hdr" style="text-align:center">📊 Live Total</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-hdr" style="text-align:center">📊 Live Summary</div>', unsafe_allow_html=True)
+        
+        # Calculate totals per operation
+        from collections import defaultdict
+        op_totals = defaultdict(lambda: {"pieces": 0, "hours": 0, "value": 0})
+        
+        for hcol in HOUR_COLS:
+            op = op_vals.get(hcol)
+            if op and op != "":
+                pcs = h_vals.get(hcol, 0)
+                op_totals[op]["pieces"] += pcs
+                op_totals[op]["hours"] += 1 if pcs > 0 else 0
+                op_totals[op]["value"] += pcs * op_info[op]["Rate_Rs"]
+        
+        # Display per-operation summary
+        if op_totals:
+            for op_name, data in op_totals.items():
+                op_data = op_info[op_name]
+                daily_eff = (data["pieces"] / op_data["Target"] * 100) if op_data["Target"] > 0 else 0
+                
+                # Color coding
+                bg_color = "#e8f5e9" if daily_eff >= 100 else ("#fff3e0" if daily_eff >= 70 else "#ffebee")
+                text_color = "#2e7d32" if daily_eff >= 100 else ("#f57c00" if daily_eff >= 70 else "#c62828")
+                
+                st.markdown(f"""
+                <div style="background:{bg_color};border-left:4px solid {text_color};padding:10px;border-radius:6px;margin:8px 0;">
+                    <div style="font-size:.75rem;font-weight:600;color:#424242;margin-bottom:4px;">{op_name}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:1.3rem;font-weight:700;color:{text_color};">{data["pieces"]} pcs</div>
+                            <div style="font-size:.7rem;color:#666;">Target: {op_data['Target']}/day</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:1.1rem;font-weight:700;color:{text_color};">{daily_eff:.0f}%</div>
+                            <div style="font-size:.7rem;color:#666;">₹{data['value']:.0f}</div>
+                        </div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+        
+        # Overall totals
         total_pcs = sum(h_vals.values())
-        eff_pct   = round(total_pcs / tgt_val * 100, 1) if tgt_val > 0 else 0.0
-        piece_val = round(total_pcs * rate_val, 2)
-
-        # Running per-hour table
-        rows_html = ""
-        running = 0
-        for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
-            is_lunch_r = (hcol == "H_13_14")
-            v = h_vals.get(hcol, 0)
-            running += v
-            if is_lunch_r:
-                rows_html += f'<tr style="background:#fafafa;color:#9e9e9e;"><td>🍽️ {hlbl}</td><td colspan="2" style="text-align:center;font-size:.78rem;">lunch</td></tr>'
-            else:
-                bg = "#f9fbe7" if v > 0 else ""
-                rows_html += f'<tr style="background:{bg}"><td>{hlbl}</td><td><b>{v}</b></td><td>{running}</td></tr>'
-
+        total_value = sum(data["value"] for data in op_totals.values())
+        
+        st.markdown("---")
         st.markdown(f"""
-        <table class="hour-table">
-          <tr><th>Hour</th><th>Pcs</th><th>Total</th></tr>
-          {rows_html}
-        </table>""", unsafe_allow_html=True)
-
-        eff_color = "#2e7d32" if eff_pct>=100 else ("#f57c00" if eff_pct>=70 else "#c62828")
+        <div style="background:#1a3a5c;color:#fff;border-radius:8px;padding:14px;text-align:center;margin-top:10px;">
+            <div style="font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.05em;">Grand Total</div>
+            <div style="font-size:2.2rem;font-weight:700;font-family:'IBM Plex Mono',monospace;margin:8px 0;">{total_pcs}</div>
+            <div style="font-size:.7rem;opacity:.7;">pieces</div>
+            <div style="font-size:1.5rem;font-weight:700;margin-top:10px;">₹{total_value:,.0f}</div>
+            <div style="font-size:.7rem;opacity:.7;">piece value</div>
+        </div>""", unsafe_allow_html=True)
+        
+        # Active hours indicator
+        active_hours = sum(1 for v in h_vals.values() if v > 0)
         st.markdown(f"""
-        <div style="margin-top:10px;background:#1a3a5c;color:#fff;border-radius:8px;padding:12px;text-align:center;">
-          <div style="font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.05em;">Total Pieces</div>
-          <div style="font-size:2rem;font-weight:700;font-family:'IBM Plex Mono',monospace;">{total_pcs}</div>
-          <div style="font-size:.7rem;opacity:.7;margin-top:6px;">Efficiency</div>
-          <div style="font-size:1.5rem;font-weight:700;color:{eff_color};">{eff_pct}%</div>
-          <div style="font-size:.7rem;opacity:.7;margin-top:6px;">Piece Value</div>
-          <div style="font-size:1.3rem;font-weight:700;">₹{piece_val:,.0f}</div>
-          <div style="font-size:.7rem;opacity:.7;margin-top:6px;">Target</div>
-          <div style="font-size:1rem;">{tgt_val} pcs</div>
+        <div style="background:#f0f6ff;border-radius:6px;padding:8px;margin-top:8px;text-align:center;">
+            <div style="font-size:.7rem;color:#666;">Active Hours</div>
+            <div style="font-size:1.1rem;font-weight:600;color:#2c5aa0;">{active_hours} / 11</div>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
+    
+    # Save button with validation
+    save_disabled = total_pcs == 0
+    if save_disabled:
+        st.warning("⚠️ Enter at least one piece to save the entry.")
+    
     if st.button("💾 Save Production Entry", key="pe_save", use_container_width=True,
-                 type="primary"):
-        # Group slots by operation and save one row per unique operation
-        from collections import defaultdict
-        op_groups = defaultdict(lambda: {"hours": {}, "pieces": 0})
-        for hcol in HOUR_COLS:
-            op = op_vals.get(hcol)
-            if op is None:
-                continue  # lunch slot
-            pcs = h_vals.get(hcol, 0)
-            op_groups[op]["hours"][hcol] = pcs
-            op_groups[op]["pieces"] += pcs
-
-        if not op_groups:
+                 type="primary", disabled=save_disabled):
+        # Group by operation and save
+        if not op_totals:
             st.error("No entries to save.")
         else:
             saved_ops = []
-            for op_name, data in op_groups.items():
-                op_info = style_ops[style_ops["Operation"] == op_name]
-                if op_info.empty:
-                    continue
-                op_tgt  = int(op_info["Target"].values[0])
-                op_rate = float(op_info["Rate_Rs"].values[0])
-                op_pcs  = data["pieces"]
-                op_eff  = round(op_pcs / op_tgt * 100, 1) if op_tgt > 0 else 0.0
-                op_val  = round(op_pcs * op_rate, 2)
-                # Build full hour columns (0 for hours not assigned to this op)
-                hour_row = {hcol: data["hours"].get(hcol, 0) for hcol in HOUR_COLS}
+            for op_name, data in op_totals.items():
+                op_data = op_info[op_name]
+                op_pcs = data["pieces"]
+                op_eff = round(op_pcs / op_data["Target"] * 100, 1) if op_data["Target"] > 0 else 0.0
+                op_val = round(data["value"], 2)
+                
+                # Build hour columns (only for this operation)
+                hour_row = {}
+                for hcol in HOUR_COLS:
+                    if op_vals.get(hcol) == op_name:
+                        hour_row[hcol] = h_vals.get(hcol, 0)
+                    else:
+                        hour_row[hcol] = 0
+                
                 new_row = {
                     "Date": str(pe_date),
                     "Karigar_ID": k_row["Karigar_ID"],
@@ -669,15 +750,20 @@ with tab_prod:
                     "Operation": op_name,
                     **hour_row,
                     "Total_Pieces": op_pcs,
-                    "Target": op_tgt,
-                    "Rate_Rs": op_rate,
+                    "Target": op_data["Target"],
+                    "Rate_Rs": op_data["Rate_Rs"],
                     "Efficiency_%": op_eff,
                     "Piece_Value_Rs": op_val,
                 }
                 st.session_state.production_log = pd.concat(
                     [st.session_state.production_log, pd.DataFrame([new_row])], ignore_index=True)
-                saved_ops.append(f"{op_name}: {op_pcs} pcs ({op_eff}%) ₹{op_val}")
-            st.success(f"✅ Saved {len(saved_ops)} operation(s) for {k_row['Name']}:\n" + "\n".join(saved_ops))
+                
+                # Efficiency badge
+                badge = "🏆 Excellent" if op_eff >= 100 else ("⭐ Good" if op_eff >= 85 else ("✅ Fair" if op_eff >= 70 else "⚠️ Below Target"))
+                saved_ops.append(f"• {op_name}: {op_pcs} pcs ({op_eff:.1f}%) — {badge} — ₹{op_val:.0f}")
+            
+            st.success(f"✅ **Saved {len(saved_ops)} operation(s)** for **{k_row['Name']}**\n\n" + "\n".join(saved_ops))
+            st.balloons()
             st.rerun()
 
     # ── KARIGAR SUMMARY ────────────────────────────────────────────
@@ -1193,4 +1279,4 @@ with tab_master:
         st.download_button("📥 Export Employee Master",to_excel_bytes(st.session_state.employee_master),"employee_master.xlsx",key="dl_em")
 
 st.markdown("---")
-st.markdown("🧵 <b>Stitching Costing Interface v4.0</b> — Yash Gallery Pvt Ltd", unsafe_allow_html=True)
+st.markdown("🧵 <b>Stitching Costing Interface v4.1 — Enhanced</b> — Yash Gallery Pvt Ltd", unsafe_allow_html=True)
