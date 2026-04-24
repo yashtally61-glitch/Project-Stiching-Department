@@ -472,6 +472,17 @@ with tab_prod:
         k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
         k_row = k_map[sel_k_key]
+        
+        # Check if Karigar changed and reset entries
+        if "prev_karigar" not in st.session_state:
+            st.session_state.prev_karigar = sel_k_key
+        
+        if st.session_state.prev_karigar != sel_k_key:
+            # Karigar changed - clear all hour entries
+            st.session_state.prev_karigar = sel_k_key
+            # Force rerun to clear widgets
+            st.rerun()
+        
         st.markdown(f'<div class="ro-field">ID: <b>{k_row["Karigar_ID"]}</b> &nbsp;|&nbsp; Skill: <b>{k_row["Skill"]}</b> &nbsp;|&nbsp; Daily Rate: <b>₹{k_row["Daily_Rate_Rs"]}</b></div>', unsafe_allow_html=True)
 
     # ── STEP 2: Style ───────────────────────────────────────────────
@@ -482,6 +493,14 @@ with tab_prod:
         st.stop()
 
     pe_style = st.selectbox("👗 Select Style (SKU)", all_styles, key="pe_style")
+    
+    # Check if Style changed and reset
+    if "prev_style" not in st.session_state:
+        st.session_state.prev_style = pe_style
+    
+    if st.session_state.prev_style != pe_style:
+        st.session_state.prev_style = pe_style
+        st.rerun()
 
     # ── STEP 3: Challan (filtered by style) ─────────────────────────
     ch_df = st.session_state.challan_master
@@ -501,6 +520,15 @@ with tab_prod:
     sel_ch_key  = st.selectbox("🧾 Select Challan", list(ch_map.keys()), key="sel_ch")
     ch_row      = ch_map[sel_ch_key]
     challan_no  = ch_row["Challan_No"]
+    
+    # Check if Challan changed and reset
+    if "prev_challan" not in st.session_state:
+        st.session_state.prev_challan = challan_no
+    
+    if st.session_state.prev_challan != challan_no:
+        st.session_state.prev_challan = challan_no
+        st.rerun()
+    
     ch_qty      = int(safe_num(pd.Series([ch_row["Total_Qty"]])).iloc[0])
     ch_rec      = int(safe_num(pd.Series([ch_row.get("Received_Qty",0)])).iloc[0])
     st.markdown(
@@ -535,7 +563,14 @@ with tab_prod:
 
     # ── STEP 5: MOBILE-FRIENDLY Hour-wise Entry ────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry</div>', unsafe_allow_html=True)
+    col_hdr, col_btn = st.columns([3, 1])
+    with col_hdr:
+        st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry</div>', unsafe_allow_html=True)
+    with col_btn:
+        if st.button("🔄 Clear All", key="clear_all_hours", help="Reset all hour entries", use_container_width=True):
+            # This will trigger a rerun and clear all inputs
+            st.rerun()
+    
     st.markdown("""
     <div class="info-box">
     📱 <b>Mobile-Friendly Entry:</b> Fill hour by hour. Operation auto-fills from previous hour.
