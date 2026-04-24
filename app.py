@@ -62,62 +62,94 @@ DATA_KEYS  = ["style_master","karigar_master","challan_master","production_log",
 DEFAULT_PW = hashlib.sha256("admin123".encode()).hexdigest()
 
 # ═══════════════════════════════════════════
+# CHECK EXCEL LIBRARIES
+# ═══════════════════════════════════════════
+EXCEL_AVAILABLE = False
+EXCEL_ENGINE = None
+
+try:
+    import xlsxwriter
+    EXCEL_AVAILABLE = True
+    EXCEL_ENGINE = "xlsxwriter"
+except ImportError:
+    try:
+        import openpyxl
+        EXCEL_AVAILABLE = True
+        EXCEL_ENGINE = "openpyxl"
+    except ImportError:
+        EXCEL_AVAILABLE = False
+        EXCEL_ENGINE = None
+
+# ═══════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════
 def safe_num(s): return pd.to_numeric(s, errors='coerce').fillna(0)
 def hash_pw(pw): return hashlib.sha256(pw.encode()).hexdigest()
 
-def to_excel_bytes(df: pd.DataFrame) -> bytes:
-    """Export as proper Excel format (.xlsx) with fallback options"""
+def to_excel_bytes(df: pd.DataFrame) -> tuple:
+    """
+    Export DataFrame as Excel or CSV depending on availability.
+    Returns: (bytes, file_extension, mime_type)
+    """
+    if not EXCEL_AVAILABLE:
+        # No Excel library - return CSV
+        return (
+            df.to_csv(index=False).encode(),
+            ".csv",
+            "text/csv"
+        )
+    
     buf = io.BytesIO()
     
-    # Try xlsxwriter first (best option)
     try:
-        with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="Data", startrow=0)
-            workbook = writer.book
-            worksheet = writer.sheets["Data"]
-            
-            # Format header
-            header_format = workbook.add_format({
-                'bold': True,
-                'bg_color': '#2c5aa0',
-                'font_color': 'white',
-                'border': 1,
-                'align': 'center',
-                'valign': 'vcenter'
-            })
-            
-            # Apply header formatting
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-            
-            # Auto-adjust column widths
-            for idx, col in enumerate(df.columns):
-                max_length = max(
-                    df[col].astype(str).apply(len).max(),
-                    len(str(col))
-                ) + 2
-                worksheet.set_column(idx, idx, min(max_length, 50))
-            
-            worksheet.set_row(0, 20)
+        if EXCEL_ENGINE == "xlsxwriter":
+            with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+                df.to_excel(writer, index=False, sheet_name="Data", startrow=0)
+                workbook = writer.book
+                worksheet = writer.sheets["Data"]
+                
+                # Format header
+                header_format = workbook.add_format({
+                    'bold': True,
+                    'bg_color': '#2c5aa0',
+                    'font_color': 'white',
+                    'border': 1,
+                    'align': 'center',
+                    'valign': 'vcenter'
+                })
+                
+                # Apply header formatting
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                
+                # Auto-adjust column widths
+                for idx, col in enumerate(df.columns):
+                    max_length = max(
+                        df[col].astype(str).apply(len).max(),
+                        len(str(col))
+                    ) + 2
+                    worksheet.set_column(idx, idx, min(max_length, 50))
+                
+                worksheet.set_row(0, 20)
         
-        buf.seek(0)
-        return buf.getvalue()
-        
-    except ImportError:
-        # If xlsxwriter not available, try openpyxl
-        try:
+        elif EXCEL_ENGINE == "openpyxl":
             with pd.ExcelWriter(buf, engine="openpyxl") as writer:
                 df.to_excel(writer, index=False, sheet_name="Data")
-            buf.seek(0)
-            return buf.getvalue()
-        except ImportError:
-            # If both Excel engines fail, return CSV
-            return df.to_csv(index=False).encode()
+        
+        buf.seek(0)
+        return (
+            buf.getvalue(),
+            ".xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        
     except Exception as e:
-        # Any other error, return CSV
-        return df.to_csv(index=False).encode()
+        # Fallback to CSV on any error
+        return (
+            df.to_csv(index=False).encode(),
+            ".csv",
+            "text/csv"
+        )
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode()
@@ -226,14 +258,28 @@ def import_section(key: str, session_key: str, label: str):
         st.markdown(f'<div class="tpl-box">📋 <b>Step 1:</b> Download the template below, fill your data keeping the exact column names, then upload it back.<br>Required columns: <b>{", ".join(tmpl.columns.tolist())}</b></div>', unsafe_allow_html=True)
 
         dl1, dl2 = st.columns(2)
+        
+        # Get proper file format
+        excel_data, excel_ext, excel_mime = to_excel_bytes(tmpl)
+        
         with dl1:
-            st.download_button(
-                f"⬇️ Download Excel Template",
-                data=to_excel_bytes(tmpl),
-                file_name=f"{key}_template.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"tpl_x_{key}", use_container_width=True
-            )
+            if EXCEL_AVAILABLE:
+                st.download_button(
+                    f"⬇️ Download Excel Template",
+                    data=excel_data,
+                    file_name=f"{key}_template{excel_ext}",
+                    mime=excel_mime,
+                    key=f"tpl_x_{key}", use_container_width=True
+                )
+            else:
+                st.download_button(
+                    f"⬇️ Download Template (CSV)",
+                    data=excel_data,
+                    file_name=f"{key}_template.csv",
+                    mime="text/csv",
+                    key=f"tpl_x_{key}", use_container_width=True
+                )
+                st.info("💡 Install xlsxwriter for Excel format")
         with dl2:
             st.download_button(
                 f"⬇️ Download CSV Template",
@@ -336,6 +382,20 @@ st.markdown(f"""
   <h2>🧵 Stitching Costing Interface — Yash Gallery Pvt Ltd</h2>
   <p>Karigar Tracking · Challan Management · Style Costing · Payroll &nbsp;|&nbsp; {date.today().strftime("%d %b %Y")}</p>
 </div>""", unsafe_allow_html=True)
+
+# Show warning if Excel not available
+if not EXCEL_AVAILABLE:
+    st.warning("""
+        ⚠️ **Excel Export Not Available** - Missing required libraries.
+        
+        Downloads will be in **CSV format** instead of Excel (.xlsx).
+        
+        **To fix:** Run this command in your terminal:
+        ```
+        pip install xlsxwriter openpyxl
+        ```
+        Then restart the app.
+    """, icon="⚠️")
 
 # ═══════════════════════════════════════════
 # SIDEBAR
@@ -826,7 +886,10 @@ with tab_prod:
                 st.dataframe(ch_s, use_container_width=True, hide_index=True)
 
             e1,e2=st.columns(2)
-            with e1: st.download_button("📥 Excel",to_excel_bytes(day_pl),f"prod_{flt_d}.xlsx")
+            excel_data, excel_ext, excel_mime = to_excel_bytes(day_pl)
+            with e1: st.download_button("📥 Excel" if EXCEL_AVAILABLE else "📥 CSV",
+                                       excel_data, f"prod_{flt_d}{excel_ext}",
+                                       mime=excel_mime)
             with e2: st.download_button("📥 CSV",  to_csv_bytes(day_pl),  f"prod_{flt_d}.csv")
         else:
             st.info("No entries for selected date.")
@@ -919,7 +982,9 @@ with tab_challan:
                     st.success(f"✅ {upd_ch} updated — Qty: {new_qty}, Received: {new_rec}, Deposit: ₹{new_dep}, Rate: ₹{new_rate}")
                     st.rerun()
 
-    st.download_button("📥 Export Challans (Excel)", to_excel_bytes(st.session_state.challan_master), "challans.xlsx")
+    excel_data, excel_ext, excel_mime = to_excel_bytes(st.session_state.challan_master)
+    st.download_button("📥 Export Challans" + (" (Excel)" if EXCEL_AVAILABLE else " (CSV)"),
+                      excel_data, f"challans{excel_ext}", mime=excel_mime)
 
 
 # ══════════════════════════════════════════════════════════
@@ -992,7 +1057,9 @@ with tab_style:
         st.dataframe(sru, use_container_width=True, hide_index=True)
 
         e1,e2=st.columns(2)
-        with e1: st.download_button("📥 Style Costing Excel",to_excel_bytes(cm_sc[dc]),f"style_pl_{sel_mo}.xlsx")
+        excel_data, excel_ext, excel_mime = to_excel_bytes(cm_sc[dc])
+        with e1: st.download_button("📥 Style Costing" + (" Excel" if EXCEL_AVAILABLE else " CSV"),
+                                   excel_data, f"style_pl_{sel_mo}{excel_ext}", mime=excel_mime)
         with e2: st.download_button("📥 Style Costing CSV",  to_csv_bytes(cm_sc[dc]),  f"style_pl_{sel_mo}.csv")
 
 
@@ -1041,7 +1108,9 @@ with tab_eff:
                 st.markdown(f'<div class="warn-box">⚠️ <b>Bottleneck Operations (below 80%):</b> {", ".join(bn["Operation"].tolist())}</div>',unsafe_allow_html=True)
 
             e1,e2=st.columns(2)
-            with e1: st.download_button("📥 Excel",to_excel_bytes(ke),"efficiency.xlsx")
+            excel_data, excel_ext, excel_mime = to_excel_bytes(ke)
+            with e1: st.download_button("📥 " + ("Excel" if EXCEL_AVAILABLE else "CSV"),
+                                       excel_data, f"efficiency{excel_ext}", mime=excel_mime)
             with e2: st.download_button("📥 CSV",  to_csv_bytes(ke),  "efficiency.csv")
 
 
@@ -1070,7 +1139,10 @@ with tab_pay:
                 st.dataframe(pr,use_container_width=True,hide_index=True)
                 st.metric("Total Payroll",f"₹{pr['Total'].sum():,.2f}")
                 px1,px2=st.columns(2)
-                with px1: st.download_button("📥 Payroll Excel",to_excel_bytes(pr),f"payroll_{pay_s}_{pay_e}.xlsx",key="py_x")
+                excel_data, excel_ext, excel_mime = to_excel_bytes(pr)
+                with px1: st.download_button("📥 Payroll" + (" Excel" if EXCEL_AVAILABLE else " CSV"),
+                                            excel_data, f"payroll_{pay_s}_{pay_e}{excel_ext}",
+                                            mime=excel_mime, key="py_x")
                 with px2: st.download_button("📥 Payroll CSV",  to_csv_bytes(pr),  f"payroll_{pay_s}_{pay_e}.csv", key="py_c")
 
 
@@ -1181,7 +1253,9 @@ with tab_att:
         av=st.session_state.karigar_attendance[st.session_state.karigar_attendance["Date"]==str(af)]
         if not av.empty:
             st.dataframe(av,use_container_width=True,hide_index=True)
-            st.download_button("📥 Download",to_excel_bytes(av),f"att_{af}.xlsx")
+            excel_data, excel_ext, excel_mime = to_excel_bytes(av)
+            st.download_button("📥 Download" + (" Excel" if EXCEL_AVAILABLE else " CSV"),
+                             excel_data, f"att_{af}{excel_ext}", mime=excel_mime)
 
 
 # ══════════════════════════════════════════════════════════
@@ -1274,7 +1348,9 @@ with tab_master:
                         pd.DataFrame([{"Style":ns,"Operation":no,"Target":nt,"Rate_Rs":nr}])],ignore_index=True)
                     st.success(f"Added operation '{no}' to style '{ns}'!")
         st.dataframe(st.session_state.style_master,use_container_width=True,hide_index=True)
-        st.download_button("📥 Export Style Master",to_excel_bytes(st.session_state.style_master),"style_master.xlsx",key="dl_sm")
+        excel_data, excel_ext, excel_mime = to_excel_bytes(st.session_state.style_master)
+        st.download_button("📥 Export Style Master" + (" Excel" if EXCEL_AVAILABLE else " CSV"),
+                          excel_data, f"style_master{excel_ext}", mime=excel_mime, key="dl_sm")
 
     with m2t:
         import_section("karigar_master","karigar_master","Karigar Master")
@@ -1291,7 +1367,9 @@ with tab_master:
                         pd.DataFrame([{"E_Code":ec5,"Name":k_nm,"Type":"Karigar","Daily_Rate_Rs":k_rt,"Hourly_Rate_Rs":round(k_rt/8,2)}])],ignore_index=True)
                     st.success(f"✅ Added {k_nm} (Karigar: {k_id}, Employee: {ec5})")
         st.dataframe(st.session_state.karigar_master,use_container_width=True,hide_index=True)
-        st.download_button("📥 Export Karigar Master",to_excel_bytes(st.session_state.karigar_master),"karigar_master.xlsx",key="dl_km")
+        excel_data, excel_ext, excel_mime = to_excel_bytes(st.session_state.karigar_master)
+        st.download_button("📥 Export Karigar Master" + (" Excel" if EXCEL_AVAILABLE else " CSV"),
+                          excel_data, f"karigar_master{excel_ext}", mime=excel_mime, key="dl_km")
 
     with m3t:
         import_section("employee_master","employee_master","Employee Master")
@@ -1305,7 +1383,9 @@ with tab_master:
                         pd.DataFrame([{"E_Code":em_c,"Name":em_n,"Type":em_t,"Daily_Rate_Rs":em_d,"Hourly_Rate_Rs":em_h}])],ignore_index=True)
                     st.success(f"✅ Added employee {em_n} ({em_c})")
         st.dataframe(st.session_state.employee_master,use_container_width=True,hide_index=True)
-        st.download_button("📥 Export Employee Master",to_excel_bytes(st.session_state.employee_master),"employee_master.xlsx",key="dl_em")
+        excel_data, excel_ext, excel_mime = to_excel_bytes(st.session_state.employee_master)
+        st.download_button("📥 Export Employee Master" + (" Excel" if EXCEL_AVAILABLE else " CSV"),
+                          excel_data, f"employee_master{excel_ext}", mime=excel_mime, key="dl_em")
 
 st.markdown("---")
 st.markdown("🧵 <b>Stitching Costing Interface v4.1 — Enhanced</b> — Yash Gallery Pvt Ltd", unsafe_allow_html=True)
