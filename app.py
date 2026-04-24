@@ -69,19 +69,16 @@ SHEET_ID = "1_cMCIn5KlvRqXS2yRy7nBidoTmgX8K48gTBaMAqBoFE"
 # ═══════════════════════════════════════════
 # GOOGLE SHEETS FUNCTIONS
 # ═══════════════════════════════════════════
-@st.cache_resource
 def get_gsheet():
-    """Connect to Google Sheets — cached so it connects only once per session."""
+    """Open the spreadsheet fresh each time — no caching to avoid stale connections."""
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
     try:
-        # On Streamlit Cloud — uses st.secrets
         creds_dict = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     except Exception:
-        # Local — uses credentials.json file in project folder
         creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
     client = gspread.authorize(creds)
     return client.open_by_key(SHEET_ID)
@@ -91,19 +88,17 @@ def load_sheet(tab_name: str) -> pd.DataFrame:
     """Read a tab from Google Sheet into DataFrame."""
     try:
         sh = get_gsheet()
-        # Auto-create tab if it doesn't exist
         try:
             ws = sh.worksheet(tab_name)
         except gspread.exceptions.WorksheetNotFound:
-            ws = sh.add_worksheet(title=tab_name, rows=1000, cols=50)
+            sh.add_worksheet(title=tab_name, rows=1000, cols=50)
             return pd.DataFrame()
-        # If sheet is empty or only has header, return empty DataFrame
         all_values = ws.get_all_values()
         if not all_values or len(all_values) < 2:
             return pd.DataFrame()
         df = get_as_dataframe(ws, evaluate_formulas=True).dropna(how="all")
         return df.reset_index(drop=True)
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 
@@ -111,11 +106,14 @@ def save_sheet(tab_name: str, df: pd.DataFrame):
     """Write DataFrame back to Google Sheet tab."""
     try:
         sh = get_gsheet()
-        ws = sh.worksheet(tab_name)
+        try:
+            ws = sh.worksheet(tab_name)
+        except gspread.exceptions.WorksheetNotFound:
+            ws = sh.add_worksheet(title=tab_name, rows=1000, cols=50)
         ws.clear()
         set_with_dataframe(ws, df)
     except Exception as e:
-        st.error(f"❌ Could not save '{tab_name}' to Google Sheets: {e}")
+        st.error(f"Could not save {tab_name}: {e}")
 
 
 # ═══════════════════════════════════════════
