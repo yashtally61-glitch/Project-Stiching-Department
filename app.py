@@ -533,184 +533,168 @@ with tab_prod:
     op_pills = " ".join([f'<span class="sz-pill sz-xl">{op}</span>' for op in style_ops["Operation"].tolist()])
     st.markdown(f'<div class="info-box">📋 <b>Available Operations for {pe_style}:</b><br>{op_pills}</div>', unsafe_allow_html=True)
 
-    # ── STEP 5: ENHANCED Hour-wise Entry ────────────────────────────
+    # ── STEP 5: MOBILE-FRIENDLY Hour-wise Entry ────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="sec-hdr">⏱ Hour-wise Entry — Smart Operation Selection</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="info-box">
-    💡 <b>Smart Entry:</b> Each hour shows operation target and real-time efficiency %.
-    Select operation → Enter pieces → See instant efficiency feedback.
-    🍽️ 13:00–14:00 is lunch break (auto-skipped).
+    📱 <b>Mobile-Friendly Entry:</b> Fill hour by hour. Operation auto-fills from previous hour.
+    🍽️ Lunch 13:00–14:00 is auto-skipped.
     </div>""", unsafe_allow_html=True)
 
-    # Two columns: left = inputs (vertical), right = live running total
-    inp_col, sum_col = st.columns([3, 2])
     h_vals = {}
     op_vals = {}
-
-    with inp_col:
-        # Column headers with better spacing
-        hdr1, hdr2, hdr3, hdr4 = st.columns([2, 3, 2, 2])
-        with hdr1: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px;border-bottom:2px solid #2c5aa0;'>Time</div>", unsafe_allow_html=True)
-        with hdr2: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px;border-bottom:2px solid #2c5aa0;'>Operation → Target</div>", unsafe_allow_html=True)
-        with hdr3: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px;border-bottom:2px solid #2c5aa0;'>Pieces</div>", unsafe_allow_html=True)
-        with hdr4: st.markdown("<div style='font-size:.75rem;font-weight:700;color:#2c5aa0;text-transform:uppercase;letter-spacing:.06em;padding:4px;border-bottom:2px solid #2c5aa0;'>Eff %</div>", unsafe_allow_html=True)
-
-        prev_op = None  # Track previous hour's operation
+    prev_op = None  # Track previous hour's operation
+    
+    # Calculate totals on the fly
+    from collections import defaultdict
+    op_totals = defaultdict(lambda: {"pieces": 0, "hours": 0, "value": 0})
+    
+    for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
+        is_lunch = (hcol == "H_13_14")
         
-        for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
-            is_lunch = (hcol == "H_13_14")
-            rc1, rc2, rc3, rc4 = st.columns([2, 3, 2, 2])
-
-            # Time label
-            with rc1:
-                if is_lunch:
-                    st.markdown(
-                        f"<div style='padding:10px 4px;font-size:.82rem;color:#9e9e9e;background:#fafafa;border-bottom:1px solid #eee;border-radius:3px;text-align:center;'>🍽️<br>{hlbl.split('-')[0]}</div>",
-                        unsafe_allow_html=True)
-                else:
-                    st.markdown(
-                        f"<div style='padding:10px 4px;font-size:.88rem;font-weight:600;color:#1a3a52;border-bottom:1px solid #eee;text-align:center;'>🕐<br>{hlbl.split('-')[0]}</div>",
-                        unsafe_allow_html=True)
-
-            # Operation dropdown with smart default
-            with rc2:
-                if is_lunch:
-                    st.markdown("<div style='padding:10px 4px;color:#bdbdbd;font-size:.8rem;border-bottom:1px solid #eee;text-align:center;'>— Lunch Break —</div>", unsafe_allow_html=True)
-                    op_vals[hcol] = None
-                else:
-                    # Smart default: same as previous hour if available
-                    default_idx = 0
-                    if prev_op and prev_op in op_list:
-                        default_idx = op_list.index(prev_op)
-                    
+        if is_lunch:
+            st.markdown(f"""
+            <div style="background:#fafafa;border:1px solid #e0e0e0;border-radius:8px;padding:12px;margin:10px 0;text-align:center;">
+                <div style="font-size:.9rem;color:#9e9e9e;">🍽️ <b>13:00 – 14:00</b></div>
+                <div style="font-size:.75rem;color:#bdbdbd;margin-top:4px;">Lunch Break</div>
+            </div>""", unsafe_allow_html=True)
+            op_vals[hcol] = None
+            h_vals[hcol] = 0
+        else:
+            # Hour container
+            with st.container():
+                st.markdown(f"""
+                <div style="background:#e3f2fd;border-left:4px solid #2c5aa0;padding:8px 12px;border-radius:4px;margin:8px 0 4px;">
+                    <b style="font-size:1rem;color:#1a3a5c;">🕐 {hlbl}</b>
+                </div>""", unsafe_allow_html=True)
+                
+                # Smart default: same as previous hour if available
+                default_idx = 0
+                if prev_op and prev_op in op_list:
+                    default_idx = op_list.index(prev_op)
+                
+                col1, col2 = st.columns([3, 2])
+                
+                with col1:
                     selected_op = st.selectbox(
-                        "",
+                        "Operation",
                         op_list,
                         index=default_idx,
                         key=f"op_{hcol}",
-                        label_visibility="collapsed",
-                        help=f"Available operations for {pe_style}"
+                        help=f"Select operation for {hlbl}"
                     )
                     op_vals[hcol] = selected_op if selected_op != "" else None
                     
-                    # Show target and rate below operation
+                    # Show target prominently
                     if selected_op and selected_op != "":
                         op_data = op_info[selected_op]
                         st.markdown(
-                            f"<div style='font-size:.7rem;color:#666;margin-top:-8px;'>Target: {op_data['Hourly_Target']}/hr | Rate: ₹{op_data['Rate_Rs']}/pc</div>",
+                            f"<div style='background:#fff3e0;padding:6px 10px;border-radius:4px;margin-top:4px;'>"
+                            f"<b style='color:#e65100;font-size:.85rem;'>🎯 Target: {op_data['Hourly_Target']} pcs/hr</b> "
+                            f"<span style='color:#666;font-size:.8rem;'>| Rate: ₹{op_data['Rate_Rs']}/pc</span>"
+                            f"</div>",
                             unsafe_allow_html=True
                         )
                         prev_op = selected_op  # Update for next hour
-                    else:
-                        st.markdown("<div style='font-size:.7rem;color:#999;margin-top:-8px;'>Select operation first</div>", unsafe_allow_html=True)
-
-            # Piece input
-            with rc3:
-                if is_lunch:
-                    st.markdown("<div style='padding:10px 4px;color:#9e9e9e;font-size:.84rem;border-bottom:1px solid #eee;text-align:center;'>—</div>", unsafe_allow_html=True)
-                    h_vals[hcol] = 0
-                else:
+                
+                with col2:
                     disabled = (not op_vals[hcol] or op_vals[hcol] == "")
                     h_vals[hcol] = st.number_input(
-                        "pcs", 
-                        min_value=0, 
-                        step=1, 
+                        f"Pieces Done",
+                        min_value=0,
+                        step=1,
                         value=0,
                         key=f"hv_{hcol}",
-                        label_visibility="collapsed",
                         disabled=disabled,
-                        help="Enter pieces produced this hour"
+                        help=f"Enter pieces for {hlbl}"
                     )
-
-            # Real-time efficiency for this hour
-            with rc4:
-                if is_lunch:
-                    st.markdown("<div style='padding:10px 4px;color:#9e9e9e;font-size:.84rem;border-bottom:1px solid #eee;text-align:center;'>—</div>", unsafe_allow_html=True)
-                else:
-                    if op_vals[hcol] and op_vals[hcol] != "" and h_vals[hcol] > 0:
-                        op_data = op_info[op_vals[hcol]]
-                        hourly_eff = (h_vals[hcol] / op_data['Hourly_Target'] * 100) if op_data['Hourly_Target'] > 0 else 0
-                        
-                        # Color-coded efficiency
-                        if hourly_eff >= 100:
-                            color = "#2e7d32"  # Green
-                            icon = "✅"
-                        elif hourly_eff >= 80:
-                            color = "#f57c00"  # Orange
-                            icon = "⚡"
-                        else:
-                            color = "#c62828"  # Red
-                            icon = "⚠️"
-                        
-                        st.markdown(
-                            f"<div style='padding:8px 4px;font-size:.9rem;font-weight:700;color:{color};text-align:center;border-bottom:1px solid #eee;'>{icon} {hourly_eff:.0f}%</div>",
-                            unsafe_allow_html=True
-                        )
+                
+                # Show efficiency immediately if pieces entered
+                if op_vals[hcol] and op_vals[hcol] != "" and h_vals[hcol] > 0:
+                    op_data = op_info[op_vals[hcol]]
+                    hourly_eff = (h_vals[hcol] / op_data['Hourly_Target'] * 100) if op_data['Hourly_Target'] > 0 else 0
+                    
+                    # Color-coded efficiency badge
+                    if hourly_eff >= 100:
+                        bg_color = "#e8f5e9"
+                        text_color = "#2e7d32"
+                        icon = "✅"
+                        msg = "Excellent!"
+                    elif hourly_eff >= 80:
+                        bg_color = "#fff3e0"
+                        text_color = "#f57c00"
+                        icon = "⚡"
+                        msg = "Good"
                     else:
-                        st.markdown("<div style='padding:10px 4px;color:#ccc;font-size:.8rem;border-bottom:1px solid #eee;text-align:center;'>—</div>", unsafe_allow_html=True)
-
-    # Enhanced Live Summary on the right
-    with sum_col:
-        st.markdown('<div class="sec-hdr" style="text-align:center">📊 Live Summary</div>', unsafe_allow_html=True)
+                        bg_color = "#ffebee"
+                        text_color = "#c62828"
+                        icon = "⚠️"
+                        msg = "Below target"
+                    
+                    st.markdown(f"""
+                    <div style="background:{bg_color};border-radius:6px;padding:8px 12px;margin-top:8px;text-align:center;">
+                        <span style="font-size:1.1rem;font-weight:700;color:{text_color};">{icon} {hourly_eff:.0f}%</span>
+                        <span style="font-size:.8rem;color:#666;margin-left:8px;">({msg})</span>
+                    </div>""", unsafe_allow_html=True)
+                    
+                    # Update totals
+                    op_totals[op_vals[hcol]]["pieces"] += h_vals[hcol]
+                    op_totals[op_vals[hcol]]["hours"] += 1
+                    op_totals[op_vals[hcol]]["value"] += h_vals[hcol] * op_data["Rate_Rs"]
+                
+                st.markdown("---")
+    
+    # Summary at bottom (simple, mobile-friendly)
+    total_pcs = sum(h_vals.values())
+    total_value = sum(data["value"] for data in op_totals.values())
+    
+    # Simple Summary Section
+    if total_pcs > 0:
+        st.markdown('<div class="sec-hdr">📊 Today\'s Summary</div>', unsafe_allow_html=True)
         
-        # Calculate totals per operation
-        from collections import defaultdict
-        op_totals = defaultdict(lambda: {"pieces": 0, "hours": 0, "value": 0})
-        
-        for hcol in HOUR_COLS:
-            op = op_vals.get(hcol)
-            if op and op != "":
-                pcs = h_vals.get(hcol, 0)
-                op_totals[op]["pieces"] += pcs
-                op_totals[op]["hours"] += 1 if pcs > 0 else 0
-                op_totals[op]["value"] += pcs * op_info[op]["Rate_Rs"]
-        
-        # Display per-operation summary
+        # Per-operation summary cards
         if op_totals:
             for op_name, data in op_totals.items():
                 op_data = op_info[op_name]
                 daily_eff = (data["pieces"] / op_data["Target"] * 100) if op_data["Target"] > 0 else 0
                 
-                # Color coding
-                bg_color = "#e8f5e9" if daily_eff >= 100 else ("#fff3e0" if daily_eff >= 70 else "#ffebee")
-                text_color = "#2e7d32" if daily_eff >= 100 else ("#f57c00" if daily_eff >= 70 else "#c62828")
+                # Simple card
+                if daily_eff >= 100:
+                    badge_color = "#2e7d32"
+                    badge_text = "✅ Excellent"
+                elif daily_eff >= 80:
+                    badge_color = "#f57c00"
+                    badge_text = "⚡ Good"
+                else:
+                    badge_color = "#c62828"
+                    badge_text = "⚠️ Below Target"
                 
                 st.markdown(f"""
-                <div style="background:{bg_color};border-left:4px solid {text_color};padding:10px;border-radius:6px;margin:8px 0;">
-                    <div style="font-size:.75rem;font-weight:600;color:#424242;margin-bottom:4px;">{op_name}</div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div>
-                            <div style="font-size:1.3rem;font-weight:700;color:{text_color};">{data["pieces"]} pcs</div>
-                            <div style="font-size:.7rem;color:#666;">Target: {op_data['Target']}/day</div>
+                <div style="background:#f5f5f5;border-left:4px solid {badge_color};padding:12px 16px;border-radius:6px;margin:8px 0;">
+                    <div style="font-size:.9rem;font-weight:600;color:#424242;margin-bottom:6px;">{op_name}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
+                        <div style="margin-right:12px;">
+                            <span style="font-size:1.3rem;font-weight:700;color:#1a3a5c;">{data["pieces"]}</span>
+                            <span style="font-size:.8rem;color:#666;"> / {op_data['Target']} pcs</span>
                         </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:1.1rem;font-weight:700;color:{text_color};">{daily_eff:.0f}%</div>
-                            <div style="font-size:.7rem;color:#666;">₹{data['value']:.0f}</div>
+                        <div>
+                            <span style="font-size:1.1rem;font-weight:700;color:{badge_color};">{daily_eff:.0f}%</span>
+                            <span style="font-size:.8rem;color:#666;margin-left:8px;">₹{data['value']:.0f}</span>
                         </div>
                     </div>
+                    <div style="margin-top:4px;font-size:.75rem;color:{badge_color};font-weight:600;">{badge_text}</div>
                 </div>""", unsafe_allow_html=True)
         
-        # Overall totals
-        total_pcs = sum(h_vals.values())
-        total_value = sum(data["value"] for data in op_totals.values())
-        
-        st.markdown("---")
+        # Grand total
         st.markdown(f"""
-        <div style="background:#1a3a5c;color:#fff;border-radius:8px;padding:14px;text-align:center;margin-top:10px;">
-            <div style="font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.05em;">Grand Total</div>
-            <div style="font-size:2.2rem;font-weight:700;font-family:'IBM Plex Mono',monospace;margin:8px 0;">{total_pcs}</div>
-            <div style="font-size:.7rem;opacity:.7;">pieces</div>
-            <div style="font-size:1.5rem;font-weight:700;margin-top:10px;">₹{total_value:,.0f}</div>
-            <div style="font-size:.7rem;opacity:.7;">piece value</div>
-        </div>""", unsafe_allow_html=True)
-        
-        # Active hours indicator
-        active_hours = sum(1 for v in h_vals.values() if v > 0)
-        st.markdown(f"""
-        <div style="background:#f0f6ff;border-radius:6px;padding:8px;margin-top:8px;text-align:center;">
-            <div style="font-size:.7rem;color:#666;">Active Hours</div>
-            <div style="font-size:1.1rem;font-weight:600;color:#2c5aa0;">{active_hours} / 11</div>
+        <div style="background:linear-gradient(135deg,#1a3a5c,#2c5aa0);color:#fff;border-radius:10px;padding:20px;text-align:center;margin:16px 0;">
+            <div style="font-size:.8rem;opacity:.7;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Total Production</div>
+            <div style="font-size:2.5rem;font-weight:700;font-family:'IBM Plex Mono',monospace;">{total_pcs}</div>
+            <div style="font-size:.85rem;opacity:.8;margin:4px 0;">pieces completed</div>
+            <div style="border-top:1px solid rgba(255,255,255,0.3);margin:12px 0;"></div>
+            <div style="font-size:1.8rem;font-weight:700;">₹{total_value:,.0f}</div>
+            <div style="font-size:.8rem;opacity:.7;">total value</div>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
