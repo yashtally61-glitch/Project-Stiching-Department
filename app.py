@@ -91,11 +91,19 @@ def load_sheet(tab_name: str) -> pd.DataFrame:
     """Read a tab from Google Sheet into DataFrame."""
     try:
         sh = get_gsheet()
-        ws = sh.worksheet(tab_name)
+        # Auto-create tab if it doesn't exist
+        try:
+            ws = sh.worksheet(tab_name)
+        except gspread.exceptions.WorksheetNotFound:
+            ws = sh.add_worksheet(title=tab_name, rows=1000, cols=50)
+            return pd.DataFrame()
+        # If sheet is empty or only has header, return empty DataFrame
+        all_values = ws.get_all_values()
+        if not all_values or len(all_values) < 2:
+            return pd.DataFrame()
         df = get_as_dataframe(ws, evaluate_formulas=True).dropna(how="all")
         return df.reset_index(drop=True)
     except Exception as e:
-        st.warning(f"⚠️ Could not load '{tab_name}' from Google Sheets: {e}")
         return pd.DataFrame()
 
 
