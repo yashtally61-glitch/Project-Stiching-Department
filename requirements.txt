@@ -1,5 +1,7 @@
-streamlit>=1.28.0
-pandas>=2.0.0
-xlsxwriter>=3.1.0
-openpyxl>=3.1.0
-python-dateutil>=2.8.0
+streamlit
+pandas
+gspread
+gspread-dataframe
+google-auth
+xlsxwriter
+openpyxl
