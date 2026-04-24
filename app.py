@@ -68,13 +68,13 @@ def safe_num(s): return pd.to_numeric(s, errors='coerce').fillna(0)
 def hash_pw(pw): return hashlib.sha256(pw.encode()).hexdigest()
 
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
-    """Export as proper Excel format (.xlsx) using xlsxwriter engine"""
+    """Export as proper Excel format (.xlsx) with fallback options"""
     buf = io.BytesIO()
+    
+    # Try xlsxwriter first (best option)
     try:
-        # Use xlsxwriter which doesn't require openpyxl
         with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
             df.to_excel(writer, index=False, sheet_name="Data", startrow=0)
-            # Get workbook and worksheet
             workbook = writer.book
             worksheet = writer.sheets["Data"]
             
@@ -100,13 +100,23 @@ def to_excel_bytes(df: pd.DataFrame) -> bytes:
                 ) + 2
                 worksheet.set_column(idx, idx, min(max_length, 50))
             
-            worksheet.set_row(0, 20)  # Header row height
+            worksheet.set_row(0, 20)
         
         buf.seek(0)
         return buf.getvalue()
+        
+    except ImportError:
+        # If xlsxwriter not available, try openpyxl
+        try:
+            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Data")
+            buf.seek(0)
+            return buf.getvalue()
+        except ImportError:
+            # If both Excel engines fail, return CSV
+            return df.to_csv(index=False).encode()
     except Exception as e:
-        # If xlsxwriter fails, return CSV as fallback
-        st.warning(f"⚠️ Excel export issue: {str(e)[:50]}... Using CSV format instead.")
+        # Any other error, return CSV
         return df.to_csv(index=False).encode()
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
