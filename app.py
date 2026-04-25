@@ -374,7 +374,7 @@ with tab_dash:
         sc = [c for c in ["Karigar_Name","Challan_No","Style","Operation","Total_Pieces","Target","Efficiency_%","Piece_Value_Rs"] if c in tdpl.columns]
         st.dataframe(tdpl[sc], use_container_width=True, hide_index=True)
 # ══════════════════════════════════════════════════════════
-# TAB 2 — PRODUCTION ENTRY (STITCHING TABLE FORMAT)
+# TAB 2 — PRODUCTION ENTRY (STITCHING TABLE FORMAT) - FIXED
 # ══════════════════════════════════════════════════════════
 with tab_prod:
     st.markdown('<div class="sec-hdr">📋 Production Entry - Stitching Day Work</div>', unsafe_allow_html=True)
@@ -409,45 +409,57 @@ with tab_prod:
         k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
         k_row = k_map[sel_k_key]
-        
-        # ✅ CLEAR FUNCTION
-        def clear_all_hours():
-            for h in HOUR_COLS:
-                keys_to_clear = [f"saved_hv_{h}", f"saved_op_{h}", 
-                                f"sel_op_{h}", f"inp_hv_{h}"]
-                for key in keys_to_clear:
-                    if key in st.session_state:
-                        del st.session_state[key]
-        
-        # ✅ CHECK COMBO CHANGE
-        current_kar_id = str(k_row["Karigar_ID"])
-        current_combo = f"{pe_date}_{current_kar_id}"
-        
-        if st.session_state.get("last_combo") != current_combo:
-            clear_all_hours()
-            st.session_state["last_combo"] = current_combo
-            st.session_state["last_karigar"] = current_kar_id
-            st.session_state["last_date"] = str(pe_date)
-            st.rerun()
 
-    # ✅ PREFILL SAVED DATA
+    # ✅ FIX 1: TRACK COMBO & CLEAR ON CHANGE
+    current_kar_id = str(k_row["Karigar_ID"])
+    current_date = str(pe_date)
+    current_combo = f"{current_date}_{current_kar_id}"
+    
+    # Check if combination changed
+    last_combo = st.session_state.get("last_combo", "")
+    combo_changed = (last_combo != current_combo)
+    
+    if combo_changed:
+        # FORCE CLEAR ALL HOUR FIELDS
+        for h in HOUR_COLS:
+            # Delete ALL related keys
+            for prefix in ["saved_hv_", "saved_op_", "sel_op_", "inp_hv_"]:
+                key = f"{prefix}{h}"
+                if key in st.session_state:
+                    del st.session_state[key]
+        
+        # Update tracking
+        st.session_state["last_combo"] = current_combo
+        st.session_state["data_loaded"] = False
+
+    # ✅ FIX 2: LOAD SAVED DATA (only once per combo)
     pl = st.session_state.production_log
     prefilled_style = None
+    data_found = False
     
-    if not pl.empty:
-        existing = pl[(pl["Date"] == str(pe_date)) & (pl["Karigar_ID"] == str(current_kar_id))]
+    if not pl.empty and not st.session_state.get("data_loaded", False):
+        # Find existing data for this exact date + karigar
+        existing = pl[(pl["Date"] == current_date) & (pl["Karigar_ID"] == current_kar_id)]
         
         if not existing.empty:
-            st.info(f"📝 Data found for {k_row['Name']} on {pe_date} - Editing mode")
+            data_found = True
+            st.success(f"✅ Found saved data for {k_row['Name']} on {pe_date}")
             prefilled_style = existing.iloc[0]["Style"]
             
+            # PREFILL: Set session state values
             for _, row in existing.iterrows():
                 op_name = str(row["Operation"])
                 for hcol in HOUR_COLS:
                     col_val = row.get(hcol, 0)
-                    if pd.notna(col_val) and col_val > 0:
+                    if pd.notna(col_val) and int(col_val) > 0:
+                        # Set BOTH saved and widget keys
                         st.session_state[f"saved_hv_{hcol}"] = int(col_val)
                         st.session_state[f"saved_op_{hcol}"] = op_name
+            
+            # Mark data as loaded
+            st.session_state["data_loaded"] = True
+        else:
+            st.info(f"📝 New entry for {k_row['Name']} on {pe_date}")
 
     # ── STYLE SELECT ──
     sm = st.session_state.style_master
@@ -455,6 +467,7 @@ with tab_prod:
     if not all_styles:
         st.warning("No styles. Add in ⚙️ Master Data."); st.stop()
     
+    # Auto-select style if prefilled
     style_idx = 0
     if prefilled_style and prefilled_style in all_styles:
         style_idx = all_styles.index(prefilled_style)
@@ -493,12 +506,11 @@ with tab_prod:
     op_list = [""] + style_ops["Operation"].tolist()
 
     # ══════════════════════════════════════════════════════════
-    # STITCHING TABLE FORMAT: TIME | STYLE | WORK | TARGET | ACTUAL | EFFICIENCY
+    # STITCHING TABLE FORMAT
     # ══════════════════════════════════════════════════════════
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry</div>', unsafe_allow_html=True)
     
-    # ── TABLE HEADER ──
     st.markdown("""
     <div class="entry-table-hdr">
       <span>TIME</span>
@@ -519,14 +531,12 @@ with tab_prod:
     # ── TABLE ROWS ──
     for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
         
-        # LUNCH ROW
         if hcol == "H_13_14":
             st.markdown(f'<div class="entry-row-lunch"><div class="time-lbl" style="color:#9e9e9e;">{hlbl}</div><div style="padding:0 12px;font-size:.82rem;color:#bdbdbd;font-style:italic;text-align:center;">🍽️ Lunch Break</div></div>', unsafe_allow_html=True)
             op_vals[hcol] = None
             h_vals[hcol] = 0
             continue
 
-        # WORKING HOUR ROW
         row_c = st.columns([1, 1.2, 2, 1.3, 1.5, 1.3])
         
         with row_c[0]:
@@ -536,7 +546,10 @@ with tab_prod:
             st.markdown(f'<div style="text-align:center;padding:10px;font-size:.85rem;color:#666;font-weight:600;">{pe_style}</div>', unsafe_allow_html=True)
         
         with row_c[2]:
+            # Get saved operation
             saved_op = st.session_state.get(f"saved_op_{hcol}", "")
+            
+            # Determine default index
             default_idx = 0
             if saved_op and saved_op in op_list:
                 default_idx = op_list.index(saved_op)
@@ -550,6 +563,7 @@ with tab_prod:
                 label_visibility="collapsed"
             )
             
+            # Update saved operation
             st.session_state[f"saved_op_{hcol}"] = sel_op
             op_vals[hcol] = sel_op if sel_op else None
             if sel_op:
@@ -563,12 +577,16 @@ with tab_prod:
                 st.markdown('<div style="text-align:center;padding:10px;color:#bbb;">—</div>', unsafe_allow_html=True)
         
         with row_c[4]:
+            # Get saved value
             saved_val = st.session_state.get(f"saved_hv_{hcol}", 0)
+            
             pcs = st.number_input(
-                f"actual_{hlbl}", min_value=0, step=1, value=saved_val,
+                f"actual_{hlbl}", min_value=0, step=1, value=int(saved_val),
                 key=f"inp_hv_{hcol}",
                 label_visibility="collapsed"
             )
+            
+            # Update saved value
             st.session_state[f"saved_hv_{hcol}"] = pcs
             h_vals[hcol] = pcs
         
@@ -591,7 +609,7 @@ with tab_prod:
             else:
                 st.markdown('<div style="text-align:center;color:#bbb;padding:10px;">—</div>', unsafe_allow_html=True)
 
-    # ── SUMMARY SECTION ──
+    # ── SUMMARY ──
     total_pcs = sum(h_vals.values())
     total_value = sum(d["value"] for d in op_totals.values())
 
@@ -641,11 +659,15 @@ with tab_prod:
             saved_ops.append(f"• {op_name}: {data['pieces']} pcs ({op_eff:.1f}%) — ₹{data['value']:.0f}")
         
         save_sheet("production_log", st.session_state.production_log)
+        
+        # Clear data_loaded flag so it can reload
+        st.session_state["data_loaded"] = False
+        
         st.success("✅ **Saved to Google Sheets!** 🟢\n\n" + "\n".join(saved_ops))
         st.balloons()
         st.rerun()
 
-    # ── DAY VIEW SECTION ──
+    # ── DAY VIEW ──
     st.markdown("---")
     st.markdown('<div class="sec-hdr">👷 Day View</div>', unsafe_allow_html=True)
     if not st.session_state.production_log.empty:
