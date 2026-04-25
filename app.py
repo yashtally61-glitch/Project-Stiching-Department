@@ -440,6 +440,14 @@ with tab_prod:
     col_date, col_kar = st.columns([1,2])
     with col_date:
         pe_date = st.date_input("📅 Date", value=date.today(), key="pe_date")
+        # Date change pe bhi reset
+        if st.session_state.get("_last_pe_date") != str(pe_date):
+            for hcol in HOUR_COLS:
+                if f"op_{hcol}" in st.session_state:
+                    del st.session_state[f"op_{hcol}"]
+                if f"hv_{hcol}" in st.session_state:
+                    del st.session_state[f"hv_{hcol}"]
+            st.session_state["_last_pe_date"] = str(pe_date)
     with col_kar:
         st.markdown("**🔍 Search Karigar**")
         kdf = st.session_state.karigar_master.copy()
@@ -460,6 +468,18 @@ with tab_prod:
         k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
         k_row = k_map[sel_k_key]
+
+        # ── KARIGAR CHANGE DETECT → RESET ALL HOUR FIELDS ──
+        current_kar_id = str(k_row["Karigar_ID"])
+        if st.session_state.get("_last_karigar_id") != current_kar_id:
+            # Karigar badla — saare hour inputs reset karo
+            for hcol in HOUR_COLS:
+                if f"op_{hcol}" in st.session_state:
+                    del st.session_state[f"op_{hcol}"]
+                if f"hv_{hcol}" in st.session_state:
+                    del st.session_state[f"hv_{hcol}"]
+            st.session_state["_last_karigar_id"] = current_kar_id
+            st.rerun()
 
         # ── AUTO-FETCH from employee_master ──
         em_master = st.session_state.employee_master.copy()
