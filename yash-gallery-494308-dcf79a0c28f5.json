@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "yash-gallery-494308",
+  "private_key_id": "dcf79a0c28f584be4c27b8dc1db95749a2395d5e",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDIWUOdZUFUuLrn\nlsFj5TQRR+8r59YKX5IBeuLQn5v2kiVhusXmu2nFbb20q9rg7BJW1iuvdTv/in5x\n2mSTZeKRDUWG8nXRaza3PSAaEwGmx2WvWdzL2s3ghnFERi6vmUfBscIEWJjzc92W\nsv86qyopH9FaRQM7GtVk2IYmocMhQwFiR7dBARZYDPNkOIZESU4uC12OjSEnlSOl\nf2+a20R7rBQl/2EEVzU+zxbgEpz4U0gF3GUaW7WOlhD/2yeGSvNojvJoZt6cZ7MN\nrqsk+g3IwhFwjmWec84uJxoBuZfbSake6PPTNWxrMCdgQaWFYoMud88sXjbcuNA0\nchNrG8FRAgMBAAECggEAB+T/5XxsrrBedGCL9h99Oyls5XuWbc9hGGFVqC0DOdv9\nkJm0kXhfkoRrQKqymSvRjNiWHUJpmZLFE5VB4s6q4ZaBX5qqD//hRqb9iZbSTmvW\nLYAak5wngiTSDZkVXwfTccYLHt2N3gP6CTrm6efTkA4dU1OxAlEhnlPA34Cpc3lC\nTmKN1WDFC8Wv6ZNkgbx3E4STrp1dttHn7ma/wYE3ELEnNrr9+GlQK67LpTO6ZfpE\nqlSQbzhf/1OXNKG7lS34DK50h8niYZBo7FEiirjzRtKDO/IzBSecHx697pb9jvqp\nrrmwfyXg+ew+qk7a5WJBCM+0rZlZcQLcKRtQ/9ZQJQKBgQDy2ddmITGO6+sD/jYz\nXIX0vBB9FMHVGyXX1ist/4eS+wMN/xJffha+HD3ajIJblkS/3n+/xvFiJNWojvP8\nM5RtjOGY4Y8rMBGl/k8Wtl+4pJlBafnjjt0C7OniNaeaKH7lfs5mAtUNS/JZyufN\nI2eAXTYBNdvgzPI8+XNXjZEa5QKBgQDTMkx1gy4iGN0HRX8hjLR09twEzAC2jkCt\n4PTs4bBPCE8WcBCVKo9IniWcpl4ke3FcSU7weQN0cgMapEanQUbzsqtJykb8BIY/\nNwD9J4BRnI8+TC1lzEg2d9EI+VcHrCUQy1ArrEWPgoRE1XqjP8X7x+PacJqaXF/y\nwXHuYfep/QKBgQCoo8nGbCqD+yP6Y9+zjv6e0rIIig+IMw/2cA0QJjA5SwH2CDj0\nAxU781SonYYwn4siShogTMB2zOlp4ctgSVk7Mee/SHMpJHo88Ppu5TpXeEXMfRFA\niobDb02C/otiq9hi+cnOYQ0d7K1g2VxawckwBIpqEMKduvREj10fYXlwWQKBgAFc\nI43mKFfj3Rh85BKtO0Q9irElNyP1yojUF/+mfGIl5Yx5cEHlokKPciKOF7EYcmRr\nvGxj+xe23DpBsIrHKtPK5Lt25/obdVnW2tTGelcMMQfvqaMsK5LeNqReJqdP/nUb\nOgrt8wy3hG6FCWMfuAClCtyPOQ+hZKTFhhxI2TVpAoGBAOnVIjMGKlhG8bZkoj3a\ngyIGZPxo7VxL1N8IoUUCcP94JzcCbXE5ThVJ4hy5SDWEcgr/u+iUf/sTp4j1fbR4\nBaQMoAmPm1tzXex0zFJOemC7lRrjywTCOK57x6TdFLR70Ler52QNSsDGULrWjfg8\nZ1sjXSw5vkRCeoCG8nLv0uo3\n-----END PRIVATE KEY-----\n",
+  "client_email": "yash-gallery-sheets@yash-gallery-494308.iam.gserviceaccount.com",
+  "client_id": "109708383899199781927",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/yash-gallery-sheets%40yash-gallery-494308.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
