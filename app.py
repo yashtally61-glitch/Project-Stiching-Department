@@ -115,8 +115,8 @@ def save_sheet(tab_name: str, df: pd.DataFrame):
         ws.clear()
         set_with_dataframe(ws, df, include_index=False, include_column_header=True)
     except Exception as e:
-    st.session_state["save_error"] = str(e)
-    st.stop()
+        st.session_state["save_error"] = str(e)
+        st.stop()
 
 
 # ═══════════════════════════════════════════
