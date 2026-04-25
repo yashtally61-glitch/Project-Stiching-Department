@@ -408,57 +408,61 @@ with tab_prod:
         
         k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
-        k_row = k_map[sel_k_key]
+       k_row = k_map[sel_k_key]
         
-        # ✅ SMART RESET: Only reset if different date+karigar combo
+        # ✅ CLEAR FUNCTION
+        def clear_all_hours():
+            for h in HOUR_COLS:
+                keys_to_clear = [f"saved_hv_{h}", f"saved_op_{h}", 
+                                f"sel_op_{h}", f"inp_hv_{h}"]
+                for key in keys_to_clear:
+                    if key in st.session_state:
+                        del st.session_state[key]
+        
+        # ✅ CHECK COMBO CHANGE
         current_kar_id = str(k_row["Karigar_ID"])
         current_combo = f"{pe_date}_{current_kar_id}"
         
         if st.session_state.get("last_combo") != current_combo:
-            if st.session_state.get("last_karigar") != current_kar_id or st.session_state.get("last_date") != str(pe_date):
-                for h in HOUR_COLS:
-                    if f"saved_hv_{h}" in st.session_state:
-                        del st.session_state[f"saved_hv_{h}"]
-                    if f"saved_op_{h}" in st.session_state:
-                        del st.session_state[f"saved_op_{h}"]
-            
+            clear_all_hours()
+            st.session_state["last_combo"] = current_combo
             st.session_state["last_karigar"] = current_kar_id
             st.session_state["last_date"] = str(pe_date)
-            st.session_state["last_combo"] = current_combo
+            # Force rerun to apply changes
+            st.rerun()
 
-    # ✅ PREFILL EXISTING DATA FOR EDIT MODE
+    # ✅ PREFILL SAVED DATA
     pl = st.session_state.production_log
-    prefilled = False
-    existing_style = None
+    prefilled_style = None
     
     if not pl.empty:
-        existing = pl[(pl["Date"] == str(pe_date)) & (pl["Karigar_ID"] == str(k_row["Karigar_ID"]))]
+        existing = pl[(pl["Date"] == str(pe_date)) & (pl["Karigar_ID"] == str(current_kar_id))]
         
         if not existing.empty:
-            st.info(f"📝 Found {len(existing)} existing entries for {k_row['Name']} on {pe_date}. Data prefilled below.")
-            prefilled = True
-            existing_style = existing.iloc[0]["Style"]
+            st.info(f"📝 Data found for {k_row['Name']} on {pe_date} - Editing mode")
+            prefilled_style = existing.iloc[0]["Style"]
             
+            # Prefill hour data
             for _, row in existing.iterrows():
-                op = row["Operation"]
+                op_name = str(row["Operation"])
                 for hcol in HOUR_COLS:
-                    if hcol in row and pd.notna(row[hcol]) and row[hcol] > 0:
-                        st.session_state[f"saved_hv_{hcol}"] = int(row[hcol])
-                        st.session_state[f"saved_op_{hcol}"] = op
+                    col_val = row.get(hcol, 0)
+                    if pd.notna(col_val) and col_val > 0:
+                        st.session_state[f"saved_hv_{hcol}"] = int(col_val)
+                        st.session_state[f"saved_op_{hcol}"] = op_name
 
-    # ── STYLE (ONE TIME SELECT) ──
+    # ── STYLE SELECT ──
     sm = st.session_state.style_master
     all_styles = sm["Style"].unique().tolist() if not sm.empty else []
     if not all_styles:
-        st.warning("No styles. Add in ⚙️ Master Data."); st.stop()
+        st.warning("No styles."); st.stop()
     
-    if prefilled and existing_style and existing_style in all_styles:
-        default_style_idx = all_styles.index(existing_style)
-    else:
-        default_style_idx = 0
+    # Auto-select prefilled style
+    style_idx = 0
+    if prefilled_style and prefilled_style in all_styles:
+        style_idx = all_styles.index(prefilled_style)
     
-    pe_style = st.selectbox("👗 STYLE", all_styles, index=default_style_idx, key="pe_style")
-
+    pe_style = st.selectbox("👗 STYLE", all_styles, index=style_idx, key="pe_style")
     # ── CHALLAN ──
     ch_df = st.session_state.challan_master
     s_chall = ch_df[ch_df["Style"] == pe_style] if not ch_df.empty else pd.DataFrame()
