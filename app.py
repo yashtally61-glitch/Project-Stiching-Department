@@ -415,13 +415,12 @@ with tab_prod:
         current_combo = f"{pe_date}_{current_kar_id}"
         
         if st.session_state.get("last_combo") != current_combo:
-            # Different combination - clear fields
             if st.session_state.get("last_karigar") != current_kar_id or st.session_state.get("last_date") != str(pe_date):
                 for h in HOUR_COLS:
-                    if f"hv_{h}" in st.session_state:
-                        del st.session_state[f"hv_{h}"]
-                    if f"op_{h}" in st.session_state:
-                        del st.session_state[f"op_{h}"]
+                    if f"saved_hv_{h}" in st.session_state:
+                        del st.session_state[f"saved_hv_{h}"]
+                    if f"saved_op_{h}" in st.session_state:
+                        del st.session_state[f"saved_op_{h}"]
             
             st.session_state["last_karigar"] = current_kar_id
             st.session_state["last_date"] = str(pe_date)
@@ -436,20 +435,16 @@ with tab_prod:
         existing = pl[(pl["Date"] == str(pe_date)) & (pl["Karigar_ID"] == str(k_row["Karigar_ID"]))]
         
         if not existing.empty:
-            st.info(f"📝 Found {len(existing)} existing entries for {k_row['Name']} on {pe_date}. Data prefilled - you can edit and save again.")
+            st.info(f"📝 Found {len(existing)} existing entries for {k_row['Name']} on {pe_date}. Data prefilled below.")
             prefilled = True
             existing_style = existing.iloc[0]["Style"]
             
-            # Prefill hour values and operations
             for _, row in existing.iterrows():
                 op = row["Operation"]
                 for hcol in HOUR_COLS:
                     if hcol in row and pd.notna(row[hcol]) and row[hcol] > 0:
-                        # Only prefill if not already set by user
-                        if f"hv_{hcol}" not in st.session_state:
-                            st.session_state[f"hv_{hcol}"] = int(row[hcol])
-                        if f"op_{hcol}" not in st.session_state:
-                            st.session_state[f"op_{hcol}"] = op
+                        st.session_state[f"saved_hv_{hcol}"] = int(row[hcol])
+                        st.session_state[f"saved_op_{hcol}"] = op
 
     # ── STYLE (ONE TIME SELECT) ──
     sm = st.session_state.style_master
@@ -457,7 +452,6 @@ with tab_prod:
     if not all_styles:
         st.warning("No styles. Add in ⚙️ Master Data."); st.stop()
     
-    # Auto-select existing style if data was prefilled
     if prefilled and existing_style and existing_style in all_styles:
         default_style_idx = all_styles.index(existing_style)
     else:
@@ -523,13 +517,9 @@ with tab_prod:
     # ── TABLE ROWS ──
     for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
         
-        # LUNCH ROW (1:30-2:30)
+        # LUNCH ROW
         if hcol == "H_13_14":
-            st.markdown(f"""
-            <div class="entry-row-lunch">
-              <div class="time-lbl" style="color:#9e9e9e;">{hlbl}</div>
-              <div style="padding:0 12px;font-size:.82rem;color:#bdbdbd;font-style:italic;text-align:center;">🍽️ Lunch Break</div>
-            </div>""", unsafe_allow_html=True)
+            st.markdown(f'<div class="entry-row-lunch"><div class="time-lbl" style="color:#9e9e9e;">{hlbl}</div><div style="padding:0 12px;font-size:.82rem;color:#bdbdbd;font-style:italic;text-align:center;">🍽️ Lunch Break</div></div>', unsafe_allow_html=True)
             op_vals[hcol] = None
             h_vals[hcol] = 0
             continue
@@ -537,55 +527,55 @@ with tab_prod:
         # WORKING HOUR ROW
         row_c = st.columns([1, 1.2, 2, 1.3, 1.5, 1.3])
         
-        with row_c[0]:  # TIME
+        with row_c[0]:
             st.markdown(f'<div class="time-lbl">{hlbl}</div>', unsafe_allow_html=True)
         
-        with row_c[1]:  # STYLE (auto-fill from selected style)
+        with row_c[1]:
             st.markdown(f'<div style="text-align:center;padding:10px;font-size:.85rem;color:#666;font-weight:600;">{pe_style}</div>', unsafe_allow_html=True)
         
-        with row_c[2]:  # WORK (Operation dropdown)
-            # Get default index from session state if exists
+        with row_c[2]:
+            saved_op = st.session_state.get(f"saved_op_{hcol}", "")
             default_idx = 0
-            if f"op_{hcol}" in st.session_state and st.session_state[f"op_{hcol}"] in op_list:
-                default_idx = op_list.index(st.session_state[f"op_{hcol}"])
+            if saved_op and saved_op in op_list:
+                default_idx = op_list.index(saved_op)
             elif prev_op and prev_op in op_list:
                 default_idx = op_list.index(prev_op)
             
             sel_op = st.selectbox(
                 f"work_{hlbl}", op_list,
                 index=default_idx,
-                key=f"op_{hcol}",
+                key=f"sel_op_{hcol}",
                 label_visibility="collapsed"
             )
+            
+            st.session_state[f"saved_op_{hcol}"] = sel_op
             op_vals[hcol] = sel_op if sel_op else None
             if sel_op:
                 prev_op = sel_op
         
-        with row_c[3]:  # TARGET QTY (auto from style master)
+        with row_c[3]:
             if sel_op and sel_op in op_info:
                 ht = op_info[sel_op]["Hourly_Target"]
                 st.markdown(f'<div style="text-align:center;padding:10px;font-size:.92rem;font-weight:700;color:#1a3a5c;">{ht}</div>', unsafe_allow_html=True)
             else:
                 st.markdown('<div style="text-align:center;padding:10px;color:#bbb;">—</div>', unsafe_allow_html=True)
         
-        with row_c[4]:  # ACTUAL QTY (manual input)
-            # Get default value from session state if exists
-            default_val = st.session_state.get(f"hv_{hcol}", 0)
-            
+        with row_c[4]:
+            saved_val = st.session_state.get(f"saved_hv_{hcol}", 0)
             pcs = st.number_input(
-                f"actual_{hlbl}", min_value=0, step=1, value=default_val,
-                key=f"hv_{hcol}",
+                f"actual_{hlbl}", min_value=0, step=1, value=saved_val,
+                key=f"inp_hv_{hcol}",
                 label_visibility="collapsed"
             )
+            st.session_state[f"saved_hv_{hcol}"] = pcs
             h_vals[hcol] = pcs
         
-        with row_c[5]:  # EFFICIENCY (auto calculate)
+        with row_c[5]:
             if sel_op and sel_op in op_info and pcs > 0:
                 ht2 = op_info[sel_op]["Hourly_Target"]
                 eff = round(pcs / ht2 * 100) if ht2 > 0 else 0
                 rate = op_info[sel_op]["Rate_Rs"]
                 
-                # Color coded efficiency
                 if eff >= 100:
                     st.markdown(f'<div class="eff-ex">✅ {eff}%</div>', unsafe_allow_html=True)
                 elif eff >= 75:
@@ -593,7 +583,6 @@ with tab_prod:
                 else:
                     st.markdown(f'<div class="eff-bl">⚠️ {eff}%</div>', unsafe_allow_html=True)
                 
-                # Track totals
                 op_totals[sel_op]["pieces"] += pcs
                 op_totals[sel_op]["hours"] += 1
                 op_totals[sel_op]["value"] += pcs * rate
@@ -614,7 +603,6 @@ with tab_prod:
                      for op in op_totals if op_info[op]["Target"] > 0) / len(op_totals) if op_totals else 0
         sum_cols[2].metric("Avg Efficiency", f"{avg_eff:.1f}%")
         
-        # Operation-wise breakdown
         for op_name, data in op_totals.items():
             od = op_info[op_name]
             daily_eff = data["pieces"] / od["Target"] * 100 if od["Target"] > 0 else 0
@@ -679,7 +667,6 @@ with tab_prod:
             with e2: st.download_button("📥 CSV", to_csv_bytes(day_pl), f"prod_{flt_d}.csv")
         else: st.info("No entries for selected date.")
     else: st.info("No production entries yet.")
-'<div st
   
 # ══════════════════════════════════════════════════════════
 # TAB 3 — CHALLAN MANAGEMENT
