@@ -17,6 +17,8 @@ from gspread_dataframe import get_as_dataframe, set_with_dataframe
 from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Stitching Costing — Yash Gallery", page_icon="🧵", layout="wide", initial_sidebar_state="expanded")
+if "save_error" in st.session_state:
+    st.error(f"Google Sheets Error: {st.session_state['save_error']}")
 
 st.markdown("""
 <style>
