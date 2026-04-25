@@ -1,10 +1,9 @@
 """
-Stitching Costing Interface v4.4 — Yash Gallery Pvt Ltd
-FIXES v4.4:
-- Hour-wise entry: simple table format (TIME | WORK | TARGET QTY | ACTUAL QTY | EFFICIENCY)
-- Style & Challan shown as fixed info above table (not repeated per row)
-- Duplicate overwrite: same date + karigar + operation = replace
-- Employee auto-fetch from employee_master
+Stitching Costing Interface v4.3 — Yash Gallery Pvt Ltd
+FIXES v4.3:
+- Fix AttributeError: Karigar_ID / Name cast to str before .str.contains()
+- Style Costing tab: challan-wise, actual expense from production_log vs party rate
+- Hour-wise entry: compact card-grid layout (4 columns)
 """
 import streamlit as st
 import pandas as pd
@@ -37,70 +36,19 @@ html,body,[class*="css"]{font-family:'IBM Plex Sans',sans-serif;}
 .mc .ms{font-size:.7rem;opacity:.55;margin-top:2px;}
 .mc-g{background:#f0faf2;border-left-color:#2e7d32;}.mc-g .mv{color:#2e7d32;}
 .mc-o{background:#fff8f0;border-left-color:#e65100;}.mc-o .mv{color:#e65100;}
-
-/* ── Simple table styles ── */
-.entry-table-hdr{
-  display:grid;
-  grid-template-columns:90px 1fr 100px 110px 100px;
-  background:#1a3a5c;color:#fff;
-  padding:9px 8px;border-radius:6px 6px 0 0;
-  font-size:.8rem;font-weight:700;text-align:center;
-  letter-spacing:.04em;text-transform:uppercase;
-  margin-bottom:0;
-}
-.entry-table-hdr span:first-child{text-align:left;padding-left:4px;}
-.entry-row{
-  display:grid;
-  grid-template-columns:90px 1fr 100px 110px 100px;
-  border-left:1px solid #dde3ea;
-  border-right:1px solid #dde3ea;
-  border-bottom:1px solid #dde3ea;
-  background:#fff;
-  align-items:center;
-  min-height:48px;
-}
-.entry-row:hover{background:#f7faff;}
-.entry-row-lunch{
-  display:grid;
-  grid-template-columns:90px 1fr;
-  border-left:1px solid #dde3ea;
-  border-right:1px solid #dde3ea;
-  border-bottom:1px solid #dde3ea;
-  background:#fafafa;
-  align-items:center;
-  min-height:38px;
-}
-.time-lbl{
-  font-size:.84rem;font-weight:700;color:#2c5aa0;
-  text-align:center;padding:0 4px;
-  border-right:1px solid #dde3ea;
-  height:100%;display:flex;align-items:center;justify-content:center;
-}
-.tgt-lbl{
-  font-size:.88rem;font-weight:700;color:#1a3a5c;
-  text-align:center;
-  border-left:1px solid #dde3ea;
-  height:100%;display:flex;align-items:center;justify-content:center;
-}
-.eff-ex{background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;}
-.eff-gd{background:#fff3e0;color:#e65100;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;}
-.eff-bl{background:#ffebee;color:#c62828;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;}
+.hour-card{background:#fff;border:1px solid #dde3ea;border-radius:8px;padding:10px 12px;margin:4px;}
+.hour-card-lunch{background:#fafafa;border:1px dashed #e0e0e0;border-radius:8px;padding:10px 12px;margin:4px;text-align:center;}
+.eff-ex{background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;margin-top:4px;}
+.eff-gd{background:#fff3e0;color:#e65100;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;margin-top:4px;}
+.eff-bl{background:#ffebee;color:#c62828;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;margin-top:4px;}
 .sum-bar{background:#1a3a5c;color:#fff;padding:10px 16px;border-radius:8px;display:flex;gap:20px;flex-wrap:wrap;margin:7px 0;}
+.sb-item{text-align:center;}.sb-v{font-size:1.2rem;font-weight:700;font-family:'IBM Plex Mono',monospace;}
+.sb-l{font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.04em;}
 .tpl-box{background:#fffde7;border:1px dashed #f9a825;border-radius:6px;padding:10px 14px;margin:6px 0;font-size:.84rem;}
 .ch-cost-box{background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:14px 16px;margin:8px 0;}
 .ch-cost-profit{background:#e8f5e9;border-left:4px solid #2e7d32;border-radius:4px;padding:8px 12px;margin:4px 0;font-size:.88rem;color:#1b5e20;}
 .ch-cost-loss{background:#ffebee;border-left:4px solid #c62828;border-radius:4px;padding:8px 12px;margin:4px 0;font-size:.88rem;color:#b71c1c;}
 .ch-cost-pending{background:#fff8e1;border-left:4px solid #f9a825;border-radius:4px;padding:8px 12px;margin:4px 0;font-size:.88rem;color:#e65100;}
-
-/* challan info card */
-.challan-info-card{
-  background:#f0f6ff;border:1.5px solid #2c5aa0;border-radius:8px;
-  padding:12px 16px;margin:10px 0;
-}
-.challan-info-card .ci-title{font-size:.78rem;color:#2c5aa0;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
-.challan-info-card .ci-row{display:flex;gap:24px;flex-wrap:wrap;}
-.challan-info-card .ci-item{font-size:.86rem;color:#1a3a5c;}
-.challan-info-card .ci-item span{font-weight:700;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -427,103 +375,44 @@ with tab_dash:
         st.dataframe(tdpl[sc], use_container_width=True, hide_index=True)
 
 # ══════════════════════════════════════════════════════════
-# TAB 2 — PRODUCTION ENTRY  (Simple Table Format)
+# TAB 2 — PRODUCTION ENTRY  (compact card-grid hour layout)
 # ══════════════════════════════════════════════════════════
 with tab_prod:
-    st.markdown('<div class="sec-hdr">📋 Production Entry — Daily Work</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">📋 Production Entry</div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box">Select karigar → style → challan, then fill hour-wise pieces in the grid below.</div>', unsafe_allow_html=True)
 
     lock_widget("prod")
     import_section("production_log", "production_log", "Production Log")
     st.markdown("---")
 
-
-   # ── DATE & KARIGAR ──────────────────────────────────
+    # ── date & karigar ──────────────────────────────────
     col_date, col_kar = st.columns([1,2])
-    
     with col_date:
         pe_date = st.date_input("📅 Date", value=date.today(), key="pe_date")
-    
     with col_kar:
         st.markdown("**🔍 Search Karigar**")
-        
         kdf = st.session_state.karigar_master.copy()
+
+        # ── FIX: cast ID & Name to str before .str.contains() ──
         kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
-        kdf["Name"] = kdf["Name"].astype(str)
-        
+        kdf["Name"]       = kdf["Name"].astype(str)
+
         srch = st.text_input("Type name or ID", key="ksrch", placeholder="e.g. Ramesh or K001")
-        
         if srch:
-            mask = (
-                kdf["Name"].str.contains(srch, case=False, na=False) |
-                kdf["Karigar_ID"].str.contains(srch, case=False, na=False)
-            )
+            mask = (kdf["Name"].str.contains(srch, case=False, na=False) |
+                    kdf["Karigar_ID"].str.contains(srch, case=False, na=False))
             kdf_f = kdf[mask]
         else:
             kdf_f = kdf
-        
+
         if kdf_f.empty:
-            st.warning("No karigar found.")
-            st.stop()
-        
-        k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
+            st.warning("No karigar found."); st.stop()
+
+        k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
-        
         k_row = k_map[sel_k_key]
-        
-        # 🔄 RESET when karigar changes
-        current_kar_id = str(k_row["Karigar_ID"])
-        
-        if st.session_state.get("last_karigar") != current_kar_id:
-            # Clear all hour inputs when karigar changes
-            for h in HOUR_COLS:
-                st.session_state[f"hv_{h}"] = 0
-                st.session_state[f"op_{h}"] = ""
-            
-            st.session_state["last_karigar"] = current_kar_id
-            st.rerun()
-        
-        # ── AUTO-FETCH from employee_master ──
-        em_master = st.session_state.employee_master.copy()
-        em_master["E_Code"] = em_master["E_Code"].astype(str)
-        em_match = em_master[em_master["E_Code"] == str(k_row["Karigar_ID"])]
-        if not em_match.empty:
-            em_r = em_match.iloc[0]
-            st.markdown(f'<div class="ok-box">✅ <b>Auto-fetched:</b> {em_r["Name"]} &nbsp;|&nbsp; Type: <b>{em_r["Type"]}</b> &nbsp;|&nbsp; Daily: <b>₹{em_r["Daily_Rate_Rs"]}</b> &nbsp;|&nbsp; Hourly: <b>₹{em_r["Hourly_Rate_Rs"]}</b></div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="ro-field">ID: <b>{k_row["Karigar_ID"]}</b> &nbsp;|&nbsp; Skill: <b>{k_row["Skill"]}</b> &nbsp;|&nbsp; Rate: <b>₹{k_row["Daily_Rate_Rs"]}/day</b></div>', unsafe_allow_html=True) 
-    # ✅ RESET ONLY THIS (single clean logic)
-    current_kar_id = str(k_row["Karigar_ID"])
+        st.markdown(f'<div class="ro-field">ID: <b>{k_row["Karigar_ID"]}</b> &nbsp;|&nbsp; Skill: <b>{k_row["Skill"]}</b> &nbsp;|&nbsp; Rate: <b>₹{k_row["Daily_Rate_Rs"]}/day</b></div>', unsafe_allow_html=True)
 
-    if st.session_state.get("last_karigar") != current_kar_id:
-        for h in HOUR_COLS:
-            st.session_state[f"hv_{h}"] = 0
-            st.session_state[f"op_{h}"] = ""
-
-        st.session_state["last_karigar"] = current_kar_id
-        st.rerun()
-        # ── KARIGAR CHANGE DETECT → RESET ALL HOUR FIELDS ──
-        current_kar_id = str(k_row["Karigar_ID"])
-        if st.session_state.get("_last_karigar_id") != current_kar_id:
-            # Karigar badla — saare hour inputs reset karo
-            for hcol in HOUR_COLS:
-                if f"op_{hcol}" in st.session_state:
-                    del st.session_state[f"op_{hcol}"]
-                if f"hv_{hcol}" in st.session_state:
-                    del st.session_state[f"hv_{hcol}"]
-            st.session_state["_last_karigar_id"] = current_kar_id
-            st.rerun()
-
-        # ── AUTO-FETCH from employee_master ──
-        em_master = st.session_state.employee_master.copy()
-        em_master["E_Code"] = em_master["E_Code"].astype(str)
-        em_match = em_master[em_master["E_Code"] == str(k_row["Karigar_ID"])]
-        if not em_match.empty:
-            em_r = em_match.iloc[0]
-            st.markdown(f'<div class="ok-box">✅ <b>Auto-fetched:</b> {em_r["Name"]} &nbsp;|&nbsp; Type: <b>{em_r["Type"]}</b> &nbsp;|&nbsp; Daily: <b>₹{em_r["Daily_Rate_Rs"]}</b> &nbsp;|&nbsp; Hourly: <b>₹{em_r["Hourly_Rate_Rs"]}</b></div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="ro-field">ID: <b>{k_row["Karigar_ID"]}</b> &nbsp;|&nbsp; Skill: <b>{k_row["Skill"]}</b> &nbsp;|&nbsp; Rate: <b>₹{k_row["Daily_Rate_Rs"]}/day</b></div>', unsafe_allow_html=True)
-
-    # ── STYLE ──────────────────────────────────────────
     sm = st.session_state.style_master
     all_styles = sm["Style"].unique().tolist() if not sm.empty else []
     if not all_styles:
@@ -531,9 +420,8 @@ with tab_prod:
 
     pe_style = st.selectbox("👗 Style (SKU)", all_styles, key="pe_style")
 
-    # ── CHALLAN ────────────────────────────────────────
-    ch_df   = st.session_state.challan_master
-    s_chall = ch_df[ch_df["Style"] == pe_style] if not ch_df.empty else pd.DataFrame()
+    ch_df    = st.session_state.challan_master
+    s_chall  = ch_df[ch_df["Style"] == pe_style] if not ch_df.empty else pd.DataFrame()
     if s_chall.empty:
         st.warning(f"No challans for '{pe_style}'. Add in 🧾 Challan Management."); st.stop()
 
@@ -546,44 +434,15 @@ with tab_prod:
     sel_ch_key = st.selectbox("🧾 Challan", list(ch_map.keys()), key="sel_ch")
     ch_row     = ch_map[sel_ch_key]
     challan_no = ch_row["Challan_No"]
-# 📥 Fetch existing entry
-pl = st.session_state.production_log
-
-existing = pl[
-    (pl["Karigar_ID"] == k_row["Karigar_ID"]) &
-    (pl["Date"] == str(pe_date)) &
-    (pl["Challan_No"] == challan_no)
-]
-
-# 🔁 Prefill if data exists
-if not existing.empty:
-    row = existing.iloc[0]
-    for h in HOUR_COLS:
-        st.session_state[f"hv_{h}"] = int(row.get(h, 0))
     ch_qty = int(safe_num(pd.Series([ch_row["Total_Qty"]])).iloc[0])
     ch_rec = int(safe_num(pd.Series([ch_row.get("Received_Qty",0)])).iloc[0])
+    st.markdown(f'<div class="ro-field">Challan: <b>{challan_no}</b> &nbsp;|&nbsp; Total: <b>{ch_qty}</b> &nbsp;|&nbsp; Received: <b>{ch_rec}</b> &nbsp;|&nbsp; Pending: <b>{ch_qty-ch_rec}</b></div>', unsafe_allow_html=True)
 
-    # ── FIXED INFO CARD — Style + Challan shown clearly ──
-    st.markdown(f"""
-    <div class="challan-info-card">
-      <div class="ci-title">📋 Entry Details — Fixed for all hours below</div>
-      <div class="ci-row">
-        <div class="ci-item">👗 Style: <span>{pe_style}</span></div>
-        <div class="ci-item">🧾 Challan: <span>{challan_no}</span></div>
-        <div class="ci-item">🏭 Party: <span>{ch_row.get('Party','—')}</span></div>
-        <div class="ci-item">📦 Total Qty: <span>{ch_qty}</span></div>
-        <div class="ci-item">✅ Received: <span>{ch_rec}</span></div>
-        <div class="ci-item">⏳ Pending: <span>{ch_qty - ch_rec}</span></div>
-        <div class="ci-item">💰 Rate/Pc: <span>₹{ch_row.get('Rate_Per_Pc', 0)}</span></div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # ── BUILD op_info from style_master ───────────────
     style_ops = sm[sm["Style"] == pe_style][["Operation","Target","Rate_Rs"]]
     if style_ops.empty:
         st.warning(f"No operations for '{pe_style}'."); st.stop()
 
+    op_list = [""] + style_ops["Operation"].tolist()
     op_info = {}
     for _, row in style_ops.iterrows():
         op_info[row["Operation"]] = {
@@ -591,118 +450,80 @@ if not existing.empty:
             "Rate_Rs": float(row["Rate_Rs"]),
             "Hourly_Target": max(1, int(row["Target"]) // 8)
         }
-    op_list = [""] + style_ops["Operation"].tolist()
 
-    # ══════════════════════════════════════════════════
-    # SIMPLE TABLE — Hour-wise Entry
-    # TIME | WORK/OPERATION | TARGET QTY | ACTUAL QTY | EFFICIENCY
-    # ══════════════════════════════════════════════════
+    # ── HOUR-WISE COMPACT CARD GRID ─────────────────────
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry</div>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box"><b>Style & Challan fixed above.</b> Select operation per hour → enter actual qty. Lunch 13–14 is unpaid. Same entry on same day will be replaced (overwrite).</div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box">Each hour is a card. Operation carries forward automatically. Lunch 13–14 is skipped.</div>', unsafe_allow_html=True)
 
     from collections import defaultdict
-    h_vals    = {}
-    op_vals   = {}
+    h_vals   = {}
+    op_vals  = {}
     op_totals = defaultdict(lambda: {"pieces":0,"hours":0,"value":0})
 
-    # ── TABLE HEADER ──
-    st.markdown("""
-    <div class="entry-table-hdr">
-      <span>TIME</span>
-      <span>WORK / OPERATION</span>
-      <span>TARGET QTY<br><small style="font-weight:400;opacity:.8;">(per hour)</small></span>
-      <span>ACTUAL QTY</span>
-      <span>EFFICIENCY</span>
-    </div>
-    """, unsafe_allow_html=True)
+    # render in rows of 4 cards
+    non_lunch = [(hcol, hlbl) for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS) if hcol != "H_13_14"]
+    all_slots = list(zip(HOUR_COLS, HOUR_LBLS))
 
-    # ── TABLE ROWS ──
-    prev_op = ""
-    for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
+    prev_op_default = ""
+    cols_per_row = 4
 
-        # Lunch row — non-interactive
-        if hcol == "H_13_14":
-            st.markdown(f"""
-            <div class="entry-row-lunch">
-              <div class="time-lbl" style="color:#9e9e9e;">{hlbl}</div>
-              <div style="padding:0 12px;font-size:.82rem;color:#bdbdbd;font-style:italic;">🍽️ Lunch Break — Unpaid</div>
-            </div>""", unsafe_allow_html=True)
-            op_vals[hcol] = None
-            h_vals[hcol]  = 0
-            continue
+    # Build rows: lunch slot gets its own stub card in position
+    row_slots = []
+    for hcol, hlbl in all_slots:
+        row_slots.append((hcol, hlbl))
 
-        # Working hour row — use st.columns inside a container
-        row_c = st.columns([1, 3, 1.2, 1.4, 1.2])
-
-        with row_c[0]:
-            st.markdown(f'<div style="padding:10px 4px;text-align:center;font-size:.88rem;font-weight:700;color:#2c5aa0;border-right:1px solid #dde3ea;">{hlbl}</div>', unsafe_allow_html=True)
-
-        with row_c[1]:
-            default_idx = 0
-            if prev_op and prev_op in op_list:
-                default_idx = op_list.index(prev_op)
-            sel_op = st.selectbox(
-                f"op_{hlbl}", op_list,
-                index=default_idx,
-                key=f"op_{hcol}",
-                label_visibility="collapsed"
-            )
-            op_vals[hcol] = sel_op if sel_op else None
-            if sel_op:
-                prev_op = sel_op
-
-        with row_c[2]:
-            # Target qty — auto from style master
-            if sel_op and sel_op in op_info:
-                ht = op_info[sel_op]["Hourly_Target"]
-                st.markdown(f'<div style="padding:10px 4px;text-align:center;font-size:.92rem;font-weight:700;color:#1a3a5c;">{ht}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div style="padding:10px 4px;text-align:center;color:#bbb;font-size:.82rem;">—</div>', unsafe_allow_html=True)
-
-        with row_c[3]:
-            pcs = st.number_input(
-                f"pcs_{hlbl}", min_value=0, step=1, value=0,
-                key=f"hv_{hcol}",
-                label_visibility="collapsed"
-            )
-            h_vals[hcol] = pcs
-
-        with row_c[4]:
-            if sel_op and sel_op in op_info and pcs > 0:
-                ht2  = op_info[sel_op]["Hourly_Target"]
-                eff  = round(pcs / ht2 * 100)
-                rate = op_info[sel_op]["Rate_Rs"]
-                if eff >= 100:
-                    st.markdown(f'<div class="eff-ex">✅ {eff}%</div>', unsafe_allow_html=True)
-                elif eff >= 75:
-                    st.markdown(f'<div class="eff-gd">⚡ {eff}%</div>', unsafe_allow_html=True)
+    # render 4 per row
+    for row_start in range(0, len(row_slots), cols_per_row):
+        batch = row_slots[row_start:row_start+cols_per_row]
+        cols  = st.columns(len(batch))
+        for col_idx, (hcol, hlbl) in enumerate(batch):
+            with cols[col_idx]:
+                if hcol == "H_13_14":
+                    st.markdown(f'<div class="hour-card-lunch"><div style="font-size:.8rem;color:#9e9e9e;font-weight:600;">{hlbl}</div><div style="font-size:.75rem;color:#bdbdbd;margin-top:4px;">🍽️ Lunch</div></div>', unsafe_allow_html=True)
+                    op_vals[hcol] = None; h_vals[hcol] = 0
                 else:
-                    st.markdown(f'<div class="eff-bl">⚠️ {eff}%</div>', unsafe_allow_html=True)
-                op_totals[sel_op]["pieces"] += pcs
-                op_totals[sel_op]["hours"]  += 1
-                op_totals[sel_op]["value"]  += pcs * rate
-            else:
-                st.markdown('<div style="color:#bbb;font-size:.8rem;text-align:center;padding:10px 4px;">—</div>', unsafe_allow_html=True)
+                    default_idx = 0
+                    if prev_op_default and prev_op_default in op_list:
+                        default_idx = op_list.index(prev_op_default)
+                    sel_op = st.selectbox(f"Op {hlbl}", op_list, index=default_idx, key=f"op_{hcol}", label_visibility="collapsed")
+                    op_vals[hcol] = sel_op if sel_op else None
+                    if sel_op:
+                        prev_op_default = sel_op
+                        od = op_info[sel_op]
+                        pcs = st.number_input(f"Pcs {hlbl}", min_value=0, step=1, value=0, key=f"hv_{hcol}", label_visibility="collapsed")
+                        h_vals[hcol] = pcs
+                        st.caption(f"{hlbl} · 🎯 {od['Hourly_Target']}/hr · ₹{od['Rate_Rs']}")
+                        if pcs > 0:
+                            eff = pcs / od["Hourly_Target"] * 100
+                            if eff >= 100:
+                                st.markdown(f'<div class="eff-ex">✅ {eff:.0f}%</div>', unsafe_allow_html=True)
+                            elif eff >= 80:
+                                st.markdown(f'<div class="eff-gd">⚡ {eff:.0f}%</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<div class="eff-bl">⚠️ {eff:.0f}%</div>', unsafe_allow_html=True)
+                            op_totals[sel_op]["pieces"] += pcs
+                            op_totals[sel_op]["hours"]  += 1
+                            op_totals[sel_op]["value"]  += pcs * od["Rate_Rs"]
+                    else:
+                        st.caption(f"{hlbl} — select operation")
+                        h_vals[hcol] = 0
 
-    # ── TOTALS ────────────────────────────────────────
     total_pcs   = sum(h_vals.values())
     total_value = sum(d["value"] for d in op_totals.values())
 
-    # ── LIVE SUMMARY ─────────────────────────────────
+    # ── LIVE SUMMARY ────────────────────────────────────
     if total_pcs > 0:
         st.markdown("---")
         st.markdown('<div class="sec-hdr">📊 Session Summary</div>', unsafe_allow_html=True)
-        sum_cols = st.columns(4)
-        sum_cols[0].metric("Total Pieces",  f"{total_pcs:,}")
-        sum_cols[1].metric("Piece Value",   f"₹{total_value:,.2f}")
-        avg_eff_now = (
-            sum(op_totals[op]["pieces"] / op_info[op]["Target"] * 100
-                for op in op_totals if op_info[op]["Target"] > 0)
-            / len(op_totals)
-        ) if op_totals else 0
+        sum_cols = st.columns(3)
+        sum_cols[0].metric("Total Pieces", f"{total_pcs:,}")
+        sum_cols[1].metric("Piece Value",  f"₹{total_value:,.2f}")
+        avg_eff_now = sum(
+            op_totals[op]["pieces"] / op_info[op]["Target"] * 100
+            for op in op_totals if op_info[op]["Target"] > 0
+        ) / len(op_totals) if op_totals else 0
         sum_cols[2].metric("Avg Efficiency", f"{avg_eff_now:.1f}%")
-        sum_cols[3].metric("Operations", len(op_totals))
 
         for op_name, data in op_totals.items():
             od2 = op_info[op_name]
@@ -715,53 +536,22 @@ if not existing.empty:
         st.warning("⚠️ Enter at least one piece to save.")
 
     if st.button("💾 Save Production Entry", key="pe_save", use_container_width=True, type="primary", disabled=(total_pcs==0)):
-
-        # ── DUPLICATE OVERWRITE: same Date + Karigar_ID + Operation → replace ──
-        pl_existing = st.session_state.production_log
-        ops_being_saved = list(op_totals.keys())
-        replaced_count = 0
-        if not pl_existing.empty and ops_being_saved:
-            remove_mask = (
-                (pl_existing["Date"].astype(str) == str(pe_date)) &
-                (pl_existing["Karigar_ID"].astype(str) == str(k_row["Karigar_ID"])) &
-                (pl_existing["Operation"].isin(ops_being_saved))
-            )
-            replaced_count = int(remove_mask.sum())
-            st.session_state.production_log = pl_existing[~remove_mask].reset_index(drop=True)
-
-        # ── SAVE NEW ROWS ──
         saved_ops = []
         for op_name, data in op_totals.items():
             od3 = op_info[op_name]
             op_eff = round(data["pieces"] / od3["Target"] * 100, 1) if od3["Target"] > 0 else 0.0
             hour_row = {hcol:(h_vals.get(hcol,0) if op_vals.get(hcol)==op_name else 0) for hcol in HOUR_COLS}
-            new_row = {
-                "Date":         str(pe_date),
-                "Karigar_ID":   k_row["Karigar_ID"],
-                "Karigar_Name": k_row["Name"],
-                "Challan_No":   challan_no,
-                "Style":        pe_style,
-                "Operation":    op_name,
-                **hour_row,
-                "Total_Pieces": data["pieces"],
-                "Target":       od3["Target"],
-                "Rate_Rs":      od3["Rate_Rs"],
-                "Efficiency_%": op_eff,
-                "Piece_Value_Rs": round(data["value"], 2)
-            }
+            new_row = {"Date":str(pe_date),"Karigar_ID":k_row["Karigar_ID"],"Karigar_Name":k_row["Name"],
+                "Challan_No":challan_no,"Style":pe_style,"Operation":op_name,
+                **hour_row,"Total_Pieces":data["pieces"],"Target":od3["Target"],
+                "Rate_Rs":od3["Rate_Rs"],"Efficiency_%":op_eff,"Piece_Value_Rs":round(data["value"],2)}
             st.session_state.production_log = pd.concat(
                 [st.session_state.production_log, pd.DataFrame([new_row])], ignore_index=True)
             saved_ops.append(f"• {op_name}: {data['pieces']} pcs ({op_eff:.1f}%) — ₹{data['value']:.0f}")
-
         save_sheet("production_log", st.session_state.production_log)
-
-        msg = "✅ **Saved** — Synced to Google Sheets 🟢\n\n" + "\n".join(saved_ops)
-        if replaced_count > 0:
-            msg += f"\n\n🔄 *{replaced_count} purani entry(ies) replace ki gayi (overwrite)*"
-        st.success(msg)
+        st.success("✅ **Saved** — Synced to Google Sheets 🟢\n\n" + "\n".join(saved_ops))
         st.balloons(); st.rerun()
 
-    # ── DAY VIEW ──────────────────────────────────────
     st.markdown("---")
     st.markdown('<div class="sec-hdr">👷 Day View</div>', unsafe_allow_html=True)
     if not st.session_state.production_log.empty:
@@ -850,7 +640,7 @@ with tab_challan:
 
 
 # ══════════════════════════════════════════════════════════
-# TAB 4 — STYLE COSTING
+# TAB 4 — STYLE COSTING  (rebuilt: challan-wise with actual expense from production_log)
 # ══════════════════════════════════════════════════════════
 with tab_style:
     st.markdown('<div class="sec-hdr">💎 Style Costing — Challan-wise Actual Cost vs Party Rate</div>', unsafe_allow_html=True)
@@ -896,6 +686,7 @@ with tab_style:
         cm_sc["Pending"] = cm_sc["Total_Qty"] - cm_sc["Received_Qty"]
         cm_sc["Is_Pending"] = cm_sc["Pending"] > 0
 
+        # Target labour rate per piece from style master (sum of all ops for that style)
         if not sm.empty:
             target_rate = sm.groupby("Style")["Rate_Rs"].sum().reset_index()
             target_rate.columns = ["Style","Target_Labour_Rate_Pc"]
@@ -903,6 +694,7 @@ with tab_style:
         else:
             cm_sc["Target_Labour_Rate_Pc"] = 0
 
+        # Actual labour expense from production_log grouped by Challan_No
         if not pl_sc.empty:
             pl_sc["Piece_Value_Rs"] = safe_num(pl_sc.get("Piece_Value_Rs",0))
             actual_exp = pl_sc.groupby("Challan_No")["Piece_Value_Rs"].sum().reset_index()
@@ -921,6 +713,7 @@ with tab_style:
         cm_sc["Margin_%"]           = (cm_sc["PL_Rs"] / cm_sc["Party_Value_Rs"].replace(0,1)*100).round(1)
         cm_sc["Cost_vs_Target_%"]   = (cm_sc["Actual_Labour_Rs"] / cm_sc["Target_Labour_Rs"].replace(0,1)*100).round(1)
 
+        # Summary metrics
         tot_v  = cm_sc["Party_Value_Rs"].sum()
         tot_e  = cm_sc["Total_Expense_Rs"].sum()
         tot_pl = cm_sc["PL_Rs"].sum()
@@ -934,6 +727,8 @@ with tab_style:
         m5.metric("Net P&L",        f"₹{tot_pl:,.0f}", delta=f"₹{tot_pl:+,.0f}")
 
         st.markdown("---")
+
+        # ── Show pending challans first ────────────────
         pend_df = cm_sc[cm_sc["Is_Pending"]].copy()
         done_df = cm_sc[~cm_sc["Is_Pending"]].copy()
 
@@ -941,13 +736,16 @@ with tab_style:
             st.markdown('<div class="sec-hdr">⏳ Pending Challans</div>', unsafe_allow_html=True)
             for _, row in pend_df.iterrows():
                 progress = min(int(row["Received_Qty"]) / max(int(row["Total_Qty"]),1) * 100, 100)
+                exp_so_far = row["Actual_Labour_Rs"]
+                exp_target = row["Target_Labour_Rs"]
                 st.markdown(f"""
                 <div class="ch-cost-pending">
                   <b>{row["Challan_No"]}</b> &nbsp;|&nbsp; {row["Style"]} &nbsp;|&nbsp; {row.get("Party","—")} &nbsp;|&nbsp;
                   🎯 {int(row["Total_Qty"])} pcs &nbsp;|&nbsp; ✅ {int(row["Received_Qty"])} done &nbsp;|&nbsp; ⏳ {int(row["Pending"])} pending
-                  <br><small>
-                    Labour so far: <b>₹{row["Actual_Labour_Rs"]:,.0f}</b> &nbsp;|&nbsp;
-                    Target budget: <b>₹{row["Target_Labour_Rs"]:,.0f}</b> &nbsp;|&nbsp;
+                  <br>
+                  <small>
+                    Labour so far: <b>₹{exp_so_far:,.0f}</b> &nbsp;|&nbsp;
+                    Target labour budget: <b>₹{exp_target:,.0f}</b> &nbsp;|&nbsp;
                     Party rate: <b>₹{row["Rate_Per_Pc"]}/pc</b> &nbsp;|&nbsp;
                     Progress: <b>{progress:.0f}%</b>
                   </small>
@@ -962,13 +760,16 @@ with tab_style:
                 st.markdown(f"""
                 <div class="{css_cls}">
                   <b>{row["Challan_No"]}</b> &nbsp;|&nbsp; {row["Style"]} &nbsp;|&nbsp; {row.get("Party","—")} &nbsp;|&nbsp; {int(row["Total_Qty"])} pcs
-                  <br>Party Value: <b>₹{row["Party_Value_Rs"]:,.0f}</b> &nbsp;|&nbsp;
+                  <br>
+                  Party Value: <b>₹{row["Party_Value_Rs"]:,.0f}</b> &nbsp;|&nbsp;
                   Actual Labour: <b>₹{row["Actual_Labour_Rs"]:,.0f}</b> &nbsp;|&nbsp;
                   Deposit: <b>₹{row["Deposit_Rs"]:,.0f}</b> &nbsp;|&nbsp;
                   Total Expense: <b>₹{row["Total_Expense_Rs"]:,.0f}</b>
-                  <br>{icon}: <b>₹{row["PL_Rs"]:,.0f}</b> &nbsp;|&nbsp;
+                  <br>
+                  {icon}: <b>₹{row["PL_Rs"]:,.0f}</b> &nbsp;|&nbsp;
                   Per Pc: <b>₹{row["PL_Per_Pc"]}</b> &nbsp;|&nbsp;
-                  Margin: <b>{row["Margin_%"]}%</b>
+                  Margin: <b>{row["Margin_%"]}%</b> &nbsp;|&nbsp;
+                  Cost vs Target: <b>{row["Cost_vs_Target_%"]}%</b>
                 </div>""", unsafe_allow_html=True)
 
         st.markdown("---")
@@ -981,18 +782,22 @@ with tab_style:
 
         st.markdown('<div class="sec-hdr">Style Roll-up</div>', unsafe_allow_html=True)
         sru = cm_sc.groupby("Style").agg(
-            Challans=("Challan_No","nunique"),Qty=("Total_Qty","sum"),
-            Actual_Labour=("Actual_Labour_Rs","sum"),Party_Value=("Party_Value_Rs","sum"),
-            Total_Expense=("Total_Expense_Rs","sum"),PL=("PL_Rs","sum"),
-            Pending_Challans=("Is_Pending","sum")).reset_index()
+            Challans=("Challan_No","nunique"),
+            Qty=("Total_Qty","sum"),
+            Actual_Labour=("Actual_Labour_Rs","sum"),
+            Party_Value=("Party_Value_Rs","sum"),
+            Total_Expense=("Total_Expense_Rs","sum"),
+            PL=("PL_Rs","sum"),
+            Pending_Challans=("Is_Pending","sum")
+        ).reset_index()
         sru["Margin_%"]=(sru["PL"]/sru["Party_Value"].replace(0,1)*100).round(1)
         sru["Result"]=sru["PL"].apply(lambda x:"✅ Profit" if x>0 else("🔴 Loss" if x<0 else"↔ Break-even"))
         st.dataframe(sru, use_container_width=True, hide_index=True)
 
         e1,e2=st.columns(2)
         excel_data, excel_ext, excel_mime = to_excel_bytes(cm_sc[detail_cols])
-        with e1: st.download_button("📥 Style Costing Excel", excel_data, f"style_costing{excel_ext}", mime=excel_mime)
-        with e2: st.download_button("📥 CSV", to_csv_bytes(cm_sc[detail_cols]), "style_costing.csv")
+        with e1: st.download_button("📥 Style Costing" + (" Excel" if EXCEL_AVAILABLE else " CSV"), excel_data, f"style_costing_{sel_mo}{excel_ext}", mime=excel_mime)
+        with e2: st.download_button("📥 CSV", to_csv_bytes(cm_sc[detail_cols]), f"style_costing_{sel_mo}.csv")
 
 
 # ══════════════════════════════════════════════════════════
@@ -1033,7 +838,7 @@ with tab_eff:
                 st.markdown(f'<div class="warn-box">⚠️ <b>Bottleneck (below 80%):</b> {", ".join(bn["Operation"].tolist())}</div>',unsafe_allow_html=True)
             e1,e2=st.columns(2)
             excel_data, excel_ext, excel_mime = to_excel_bytes(ke)
-            with e1: st.download_button("📥 Excel",excel_data,f"efficiency{excel_ext}",mime=excel_mime)
+            with e1: st.download_button("📥 "+("Excel" if EXCEL_AVAILABLE else "CSV"),excel_data,f"efficiency{excel_ext}",mime=excel_mime)
             with e2: st.download_button("📥 CSV",to_csv_bytes(ke),"efficiency.csv")
 
 
@@ -1060,7 +865,7 @@ with tab_pay:
                 st.metric("Total Payroll",f"₹{pr['Total'].sum():,.2f}")
                 px1,px2=st.columns(2)
                 excel_data, excel_ext, excel_mime = to_excel_bytes(pr)
-                with px1: st.download_button("📥 Payroll Excel",excel_data,f"payroll_{pay_s}_{pay_e}{excel_ext}",mime=excel_mime,key="py_x")
+                with px1: st.download_button("📥 Payroll"+(" Excel" if EXCEL_AVAILABLE else " CSV"),excel_data,f"payroll_{pay_s}_{pay_e}{excel_ext}",mime=excel_mime,key="py_x")
                 with px2: st.download_button("📥 CSV",to_csv_bytes(pr),f"payroll_{pay_s}_{pay_e}.csv",key="py_c")
 
 
@@ -1258,4 +1063,4 @@ with tab_master:
         st.download_button("📥 Export Employee Master",excel_data,f"employee_master{excel_ext}",mime=excel_mime,key="dl_em")
 
 st.markdown("---")
-st.markdown("🧵 <b>Stitching Costing Interface v4.4 — Google Sheets Edition</b> — Yash Gallery Pvt Ltd", unsafe_allow_html=True)
+st.markdown("🧵 <b>Stitching Costing Interface v4.3 — Google Sheets Edition</b> — Yash Gallery Pvt Ltd", unsafe_allow_html=True)
