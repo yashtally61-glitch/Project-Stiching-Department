@@ -437,7 +437,60 @@ with tab_prod:
     st.markdown("---")
 
 
+   # ── DATE & KARIGAR ──────────────────────────────────
+    col_date, col_kar = st.columns([1,2])
     
+    with col_date:
+        pe_date = st.date_input("📅 Date", value=date.today(), key="pe_date")
+    
+    with col_kar:
+        st.markdown("**🔍 Search Karigar**")
+        
+        kdf = st.session_state.karigar_master.copy()
+        kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
+        kdf["Name"] = kdf["Name"].astype(str)
+        
+        srch = st.text_input("Type name or ID", key="ksrch", placeholder="e.g. Ramesh or K001")
+        
+        if srch:
+            mask = (
+                kdf["Name"].str.contains(srch, case=False, na=False) |
+                kdf["Karigar_ID"].str.contains(srch, case=False, na=False)
+            )
+            kdf_f = kdf[mask]
+        else:
+            kdf_f = kdf
+        
+        if kdf_f.empty:
+            st.warning("No karigar found.")
+            st.stop()
+        
+        k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
+        sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
+        
+        k_row = k_map[sel_k_key]
+        
+        # 🔄 RESET when karigar changes
+        current_kar_id = str(k_row["Karigar_ID"])
+        
+        if st.session_state.get("last_karigar") != current_kar_id:
+            # Clear all hour inputs when karigar changes
+            for h in HOUR_COLS:
+                st.session_state[f"hv_{h}"] = 0
+                st.session_state[f"op_{h}"] = ""
+            
+            st.session_state["last_karigar"] = current_kar_id
+            st.rerun()
+        
+        # ── AUTO-FETCH from employee_master ──
+        em_master = st.session_state.employee_master.copy()
+        em_master["E_Code"] = em_master["E_Code"].astype(str)
+        em_match = em_master[em_master["E_Code"] == str(k_row["Karigar_ID"])]
+        if not em_match.empty:
+            em_r = em_match.iloc[0]
+            st.markdown(f'<div class="ok-box">✅ <b>Auto-fetched:</b> {em_r["Name"]} &nbsp;|&nbsp; Type: <b>{em_r["Type"]}</b> &nbsp;|&nbsp; Daily: <b>₹{em_r["Daily_Rate_Rs"]}</b> &nbsp;|&nbsp; Hourly: <b>₹{em_r["Hourly_Rate_Rs"]}</b></div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="ro-field">ID: <b>{k_row["Karigar_ID"]}</b> &nbsp;|&nbsp; Skill: <b>{k_row["Skill"]}</b> &nbsp;|&nbsp; Rate: <b>₹{k_row["Daily_Rate_Rs"]}/day</b></div>', unsafe_allow_html=True) 
     # ✅ RESET ONLY THIS (single clean logic)
     current_kar_id = str(k_row["Karigar_ID"])
 
