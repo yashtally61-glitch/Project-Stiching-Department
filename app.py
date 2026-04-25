@@ -468,14 +468,40 @@ with tab_prod:
         k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
         k_row = k_map[sel_k_key]
-# 🔄 Reset form when karigar changes
-if "last_karigar" not in st.session_state:
-    st.session_state.last_karigar = k_row["Karigar_ID"]
+with col_kar:
+    st.markdown("**🔍 Search Karigar**")
+    kdf = st.session_state.karigar_master.copy()
 
-if st.session_state.last_karigar != k_row["Karigar_ID"]:
-    for h in HOUR_COLS:
-        st.session_state[f"hv_{h}"] = 0
-        st.session_state[f"op_{h}"] = ""
+    kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
+    kdf["Name"]       = kdf["Name"].astype(str)
+
+    srch = st.text_input("Type name or ID", key="ksrch")
+
+    if srch:
+        mask = (kdf["Name"].str.contains(srch, case=False, na=False) |
+                kdf["Karigar_ID"].str.contains(srch, case=False, na=False))
+        kdf_f = kdf[mask]
+    else:
+        kdf_f = kdf
+
+    k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
+    sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()))
+
+    k_row = k_map[sel_k_key]
+
+    # 🔄 Reset form when karigar changes
+    current_kar_id = str(k_row["Karigar_ID"])
+
+    if "last_karigar" not in st.session_state:
+        st.session_state.last_karigar = current_kar_id
+
+    if st.session_state.last_karigar != current_kar_id:
+        for h in HOUR_COLS:
+            st.session_state[f"hv_{h}"] = 0
+            st.session_state[f"op_{h}"] = ""
+
+        st.session_state.last_karigar = current_kar_id
+        st.rerun()
 
     st.session_state.last_karigar = k_row["Karigar_ID"]
     st.rerun()
