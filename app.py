@@ -13,7 +13,7 @@ import io, hashlib, zipfile
 
 # ── GOOGLE SHEETS IMPORTS ─────────────────────────────────
 import gspread
-from gspread_dataframe import get_as_dataframe, set_with_dataframe
+from gspread_dataframe import get_as_dataframe, set_with_dataframe(ws, df, include_index=False, include_column_header=True)
 from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Stitching Costing — Yash Gallery", page_icon="🧵", layout="wide", initial_sidebar_state="expanded")
