@@ -374,30 +374,69 @@ with tab_dash:
         sc = [c for c in ["Karigar_Name","Challan_No","Style","Operation","Total_Pieces","Target","Efficiency_%","Piece_Value_Rs"] if c in tdpl.columns]
         st.dataframe(tdpl[sc], use_container_width=True, hide_index=True)
 # ══════════════════════════════════════════════════════════
-# TAB 2 — PRODUCTION ENTRY (FIXED v4.4)
-# Replace the ENTIRE old "with tab_prod:" block with this
+# TAB 2 — PRODUCTION ENTRY  ✅ FULLY FIXED v4.5
+# FIXES:
+#   1. Column headers (TIME / STYLE / WORK / TARGET QTY / ACTUAL QTY / EFFICIENCY)
+#      now render correctly with proper CSS
+#   2. Saved data (operation + qty) loads correctly on karigar/date selection
+#   3. Style change mid-day is handled — each style's data is kept separate
+#   4. Composite key = Date + Karigar + Challan + Style (no cross-contamination)
+#   5. Upsert save — no duplicate rows ever
 # ══════════════════════════════════════════════════════════
 with tab_prod:
+
+    # ── HEADER STYLE (fixes the broken header row) ────────────────────────────
+    st.markdown("""
+    <style>
+    .prod-header {
+        display: grid;
+        grid-template-columns: 80px 120px 1fr 110px 130px 110px;
+        background: #1a3a5c;
+        color: #fff;
+        font-size: .75rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        padding: 8px 12px;
+        border-radius: 6px;
+        margin: 8px 0 2px 0;
+        gap: 8px;
+    }
+    .prod-header span { display: flex; align-items: center; }
+    .prod-row-lunch {
+        background: #fafafa;
+        border: 1px dashed #e0e0e0;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin: 3px 0;
+        color: #bdbdbd;
+        font-size: .82rem;
+        font-style: italic;
+        text-align: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     # ── HELPER: wipe all hour-level session keys ──────────────────────────────
     def _clear_hour_state():
         for hcol in HOUR_COLS:
             for prefix in ("saved_hv_", "saved_op_", "inp_hv_", "sel_op_"):
-                key = f"{prefix}{hcol}"
-                if key in st.session_state:
-                    del st.session_state[key]
+                k = f"{prefix}{hcol}"
+                if k in st.session_state:
+                    del st.session_state[k]
 
-    st.markdown('<div class="sec-hdr">📋 Production Entry - Stitching Day Work</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">📋 Production Entry — Stitching Day Work</div>',
+                unsafe_allow_html=True)
     lock_widget("prod")
     import_section("production_log", "production_log", "Production Log")
     st.markdown("---")
 
-    # ── DATE & KARIGAR ────────────────────────────────────────────────────────
+    # ── DATE ─────────────────────────────────────────────────────────────────
     col_date, col_kar = st.columns([1, 2])
-
     with col_date:
         pe_date = st.date_input("📅 DATE", value=date.today(), key="pe_date")
 
+    # ── KARIGAR ───────────────────────────────────────────────────────────────
     with col_kar:
         st.markdown("**👤 NAME (Karigar)**")
         kdf = st.session_state.karigar_master.copy()
@@ -405,12 +444,10 @@ with tab_prod:
         kdf["Name"]       = kdf["Name"].astype(str)
 
         srch = st.text_input("Search Karigar", key="ksrch", placeholder="Type name or ID")
-        if srch:
-            mask  = (kdf["Name"].str.contains(srch, case=False, na=False) |
-                     kdf["Karigar_ID"].str.contains(srch, case=False, na=False))
-            kdf_f = kdf[mask]
-        else:
-            kdf_f = kdf
+        kdf_f = kdf[
+            kdf["Name"].str.contains(srch, case=False, na=False) |
+            kdf["Karigar_ID"].str.contains(srch, case=False, na=False)
+        ] if srch else kdf
 
         if kdf_f.empty:
             st.warning("No karigar found.")
@@ -447,48 +484,62 @@ with tab_prod:
     ch_row     = ch_map[sel_ch_key]
     challan_no = str(ch_row["Challan_No"])
 
-    # ── FIX 4: FULL COMPOSITE KEY (Date + Karigar + Challan + Style) ──────────
+    # ── COMPOSITE KEY  (Date + Karigar + Challan + Style) ────────────────────
+    # This is the key fix: all 4 dimensions must match before any data loads
     current_karigar_id = str(k_row["Karigar_ID"])
     current_date       = str(pe_date)
     composite_key      = f"{current_date}__{current_karigar_id}__{challan_no}__{pe_style}"
 
-    last_composite = st.session_state.get("last_composite_key", "")
-    combo_changed  = (last_composite != composite_key)
-
-    if combo_changed:
-        _clear_hour_state()                                        # FIX 1
+    if st.session_state.get("last_composite_key", "") != composite_key:
+        _clear_hour_state()
         st.session_state["last_composite_key"] = composite_key
-        st.session_state["prod_data_loaded"]   = False            # FIX 2
+        st.session_state["prod_data_loaded"]   = False   # force reload
 
-    # ── FIX 2: LOAD SAVED DATA (once per composite context) ──────────────────
-    pl             = st.session_state.production_log
-    already_loaded = st.session_state.get("prod_data_loaded", False)
+    # ── LOAD SAVED DATA ───────────────────────────────────────────────────────
+    # FIX: filter on all 4 columns so data from a different style/challan
+    #      on the same day doesn't bleed into this entry form
+    pl = st.session_state.production_log
 
-    if not already_loaded:
+    if not st.session_state.get("prod_data_loaded", False):
         if not pl.empty:
             existing = pl[
-                (pl["Date"].astype(str)       == current_date)       &
-                (pl["Karigar_ID"].astype(str) == current_karigar_id) &
-                (pl["Challan_No"].astype(str) == challan_no)         &
+                (pl["Date"].astype(str)       == current_date)        &
+                (pl["Karigar_ID"].astype(str) == current_karigar_id)  &
+                (pl["Challan_No"].astype(str) == challan_no)          &
                 (pl["Style"].astype(str)      == pe_style)
             ]
             if not existing.empty:
-                st.success(f"✅ Loaded saved data for {k_row['Name']} | Challan {challan_no} | {pe_date}")
+                st.success(
+                    f"✅ Loaded: **{k_row['Name']}** | "
+                    f"Challan {challan_no} | Style {pe_style} | {pe_date}"
+                )
+                # ── Prefill hour keys from saved rows ──────────────────────
+                # Each saved row = one Operation; spread its hour values into
+                # the matching hour slots
                 for _, row in existing.iterrows():
                     op_name = str(row["Operation"])
                     for hcol in HOUR_COLS:
-                        col_val = row.get(hcol, 0)
-                        if pd.notna(col_val) and int(col_val) > 0:
-                            st.session_state[f"saved_hv_{hcol}"] = int(col_val)
+                        raw = row.get(hcol, 0)
+                        try:
+                            val = int(float(raw)) if pd.notna(raw) else 0
+                        except (ValueError, TypeError):
+                            val = 0
+                        if val > 0:
+                            # saved_op_* tells the selectbox which operation to show
+                            # saved_hv_* tells the number_input what value to show
                             st.session_state[f"saved_op_{hcol}"] = op_name
+                            st.session_state[f"saved_hv_{hcol}"] = val
             else:
-                st.info(f"📝 New entry — {k_row['Name']} | Challan {challan_no} | {pe_date}")
+                st.info(
+                    f"📝 New entry — **{k_row['Name']}** | "
+                    f"Challan {challan_no} | Style {pe_style} | {pe_date}"
+                )
         st.session_state["prod_data_loaded"] = True
 
     # ── OPERATION INFO ────────────────────────────────────────────────────────
     style_ops = sm[sm["Style"] == pe_style][["Operation", "Target", "Rate_Rs"]]
     if style_ops.empty:
-        st.warning(f"No operations for '{pe_style}'.")
+        st.warning(f"No operations defined for style '{pe_style}'.")
         st.stop()
 
     op_info = {}
@@ -500,13 +551,21 @@ with tab_prod:
         }
     op_list = [""] + style_ops["Operation"].tolist()
 
-    # ── HOUR-WISE TABLE ───────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════
+    # HOUR-WISE TABLE
+    # ══════════════════════════════════════════════════════════
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry</div>', unsafe_allow_html=True)
+
+    # ── COLUMN HEADERS (FIX: proper CSS grid, not broken HTML spans) ──────────
     st.markdown("""
-    <div class="entry-table-hdr">
-      <span>TIME</span><span>STYLE</span><span>WORK</span>
-      <span>TARGET QTY</span><span>ACTUAL QTY</span><span>EFFICIENCY</span>
+    <div class="prod-header">
+      <span>⏰ TIME</span>
+      <span>👗 STYLE</span>
+      <span>🔧 WORK / OPERATION</span>
+      <span>🎯 TARGET QTY</span>
+      <span>✅ ACTUAL QTY</span>
+      <span>📊 EFFICIENCY</span>
     </div>""", unsafe_allow_html=True)
 
     from collections import defaultdict
@@ -517,26 +576,34 @@ with tab_prod:
 
     for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
 
+        # ── Lunch break ──────────────────────────────────────────────────────
         if hcol == "H_13_14":
             st.markdown(
-                f'<div class="entry-row-lunch"><div class="time-lbl" style="color:#9e9e9e;">{hlbl}</div>'
-                f'<div style="padding:0 12px;font-size:.82rem;color:#bdbdbd;font-style:italic;text-align:center;">'
-                f'🍽️ Lunch Break</div></div>', unsafe_allow_html=True)
+                f'<div class="prod-row-lunch">🍽️ &nbsp; {hlbl} — Lunch Break</div>',
+                unsafe_allow_html=True)
             op_vals[hcol] = None
             h_vals[hcol]  = 0
             continue
 
-        row_c = st.columns([1, 1.2, 2, 1.3, 1.5, 1.3])
+        # ── 6-column row ─────────────────────────────────────────────────────
+        c0, c1, c2, c3, c4, c5 = st.columns([0.8, 1.2, 2, 1.1, 1.4, 1.1])
 
-        with row_c[0]:
-            st.markdown(f'<div class="time-lbl">{hlbl}</div>', unsafe_allow_html=True)
-
-        with row_c[1]:
+        # COL 0 — Time label
+        with c0:
             st.markdown(
-                f'<div style="text-align:center;padding:10px;font-size:.85rem;color:#666;font-weight:600;">'
-                f'{pe_style}</div>', unsafe_allow_html=True)
+                f'<div style="padding:10px 4px;font-size:.88rem;font-weight:700;'
+                f'color:#1a3a5c;white-space:nowrap;">{hlbl}</div>',
+                unsafe_allow_html=True)
 
-        with row_c[2]:
+        # COL 1 — Style (read-only display)
+        with c1:
+            st.markdown(
+                f'<div style="text-align:center;padding:10px 4px;font-size:.82rem;'
+                f'color:#555;font-weight:600;">{pe_style}</div>',
+                unsafe_allow_html=True)
+
+        # COL 2 — Operation selectbox
+        with c2:
             saved_op  = st.session_state.get(f"saved_op_{hcol}", "")
             default_i = 0
             if saved_op and saved_op in op_list:
@@ -545,7 +612,7 @@ with tab_prod:
                 default_i = op_list.index(prev_op)
 
             sel_op = st.selectbox(
-                f"work_{hlbl}", op_list,
+                f"op_{hlbl}", op_list,
                 index=default_i,
                 key=f"sel_op_{hcol}",
                 label_visibility="collapsed")
@@ -555,83 +622,96 @@ with tab_prod:
             if sel_op:
                 prev_op = sel_op
 
-        with row_c[3]:
+        # COL 3 — Hourly target (calculated)
+        with c3:
             if sel_op and sel_op in op_info:
                 ht = op_info[sel_op]["Hourly_Target"]
                 st.markdown(
-                    f'<div style="text-align:center;padding:10px;font-size:.92rem;font-weight:700;color:#1a3a5c;">'
-                    f'{ht}</div>', unsafe_allow_html=True)
+                    f'<div style="text-align:center;padding:10px;font-size:.95rem;'
+                    f'font-weight:700;color:#2c5aa0;">{ht}</div>',
+                    unsafe_allow_html=True)
             else:
-                st.markdown('<div style="text-align:center;padding:10px;color:#bbb;">—</div>', unsafe_allow_html=True)
+                st.markdown(
+                    '<div style="text-align:center;padding:10px;color:#ccc;font-size:.9rem;">—</div>',
+                    unsafe_allow_html=True)
 
-        with row_c[4]:
+        # COL 4 — Actual qty number input
+        with c4:
+            # FIX: read saved_hv_ value which was set during the prefill block above
             saved_val = int(st.session_state.get(f"saved_hv_{hcol}", 0))
             pcs = st.number_input(
-                f"actual_{hlbl}", min_value=0, step=1, value=saved_val,
+                f"qty_{hlbl}",
+                min_value=0, step=1,
+                value=saved_val,            # ← this is the key line that was broken
                 key=f"inp_hv_{hcol}",
                 label_visibility="collapsed")
-
             st.session_state[f"saved_hv_{hcol}"] = pcs
             h_vals[hcol] = pcs
 
-        with row_c[5]:
+        # COL 5 — Efficiency badge
+        with c5:
             if sel_op and sel_op in op_info and pcs > 0:
                 ht2  = op_info[sel_op]["Hourly_Target"]
                 eff  = round(pcs / ht2 * 100) if ht2 > 0 else 0
                 rate = op_info[sel_op]["Rate_Rs"]
 
-                if eff >= 100:
-                    st.markdown(f'<div class="eff-ex">✅ {eff}%</div>', unsafe_allow_html=True)
-                elif eff >= 75:
-                    st.markdown(f'<div class="eff-gd">⚡ {eff}%</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown(f'<div class="eff-bl">⚠️ {eff}%</div>', unsafe_allow_html=True)
+                badge_cls = "eff-ex" if eff >= 100 else ("eff-gd" if eff >= 75 else "eff-bl")
+                badge_ico = "✅" if eff >= 100 else ("⚡" if eff >= 75 else "⚠️")
+                st.markdown(
+                    f'<div class="{badge_cls}">{badge_ico} {eff}%</div>',
+                    unsafe_allow_html=True)
 
                 op_totals[sel_op]["pieces"] += pcs
                 op_totals[sel_op]["hours"]  += 1
                 op_totals[sel_op]["value"]  += pcs * rate
             else:
-                st.markdown('<div style="text-align:center;color:#bbb;padding:10px;">—</div>', unsafe_allow_html=True)
+                st.markdown(
+                    '<div style="text-align:center;color:#ccc;padding:10px;">—</div>',
+                    unsafe_allow_html=True)
 
-    # ── SUMMARY ───────────────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════
+    # SESSION SUMMARY
+    # ══════════════════════════════════════════════════════════
     total_pcs   = sum(h_vals.values())
     total_value = sum(d["value"] for d in op_totals.values())
 
     if total_pcs > 0:
         st.markdown("---")
         st.markdown('<div class="sec-hdr">📊 Session Summary</div>', unsafe_allow_html=True)
-        sum_cols = st.columns(3)
-        sum_cols[0].metric("Total Pieces", f"{total_pcs:,}")
-        sum_cols[1].metric("Piece Value",  f"₹{total_value:,.2f}")
-        avg_eff = (
+        sc1, sc2, sc3 = st.columns(3)
+        sc1.metric("Total Pieces",   f"{total_pcs:,}")
+        sc2.metric("Piece Value",    f"₹{total_value:,.2f}")
+        avg_eff_val = (
             sum(op_totals[op]["pieces"] / op_info[op]["Target"] * 100
                 for op in op_totals if op_info[op]["Target"] > 0)
-            / len(op_totals)
-            if op_totals else 0
+            / len(op_totals) if op_totals else 0
         )
-        sum_cols[2].metric("Avg Efficiency", f"{avg_eff:.1f}%")
+        sc3.metric("Avg Efficiency", f"{avg_eff_val:.1f}%")
 
         for op_name, data in op_totals.items():
             od        = op_info[op_name]
-            daily_eff = data["pieces"] / od["Target"] * 100 if od["Target"] > 0 else 0
-            badge     = ("🏆 Excellent" if daily_eff >= 100 else
-                         "⭐ Good"       if daily_eff >= 85  else
-                         "✅ Fair"       if daily_eff >= 70  else "⚠️ Below")
+            d_eff     = data["pieces"] / od["Target"] * 100 if od["Target"] > 0 else 0
+            badge     = ("🏆 Excellent" if d_eff >= 100 else
+                         "⭐ Good"       if d_eff >= 85  else
+                         "✅ Fair"       if d_eff >= 70  else "⚠️ Below")
             st.markdown(
                 f'<div class="ro-field">{op_name}: <b>{data["pieces"]} pcs</b> '
-                f'({daily_eff:.1f}%) {badge} — ₹{data["value"]:.0f}</div>',
+                f'({d_eff:.1f}%) {badge} — ₹{data["value"]:.0f}</div>',
                 unsafe_allow_html=True)
 
     st.markdown("---")
     if total_pcs == 0:
-        st.warning("⚠️ Enter at least one piece to save.")
+        st.warning("⚠️ Enter at least one piece count to enable saving.")
 
-    # ── FIX 3: UPSERT SAVE (delete matching row first, then insert) ───────────
+    # ══════════════════════════════════════════════════════════
+    # SAVE — UPSERT (delete matching rows first, then insert)
+    # ══════════════════════════════════════════════════════════
     if st.button("💾 SAVE PRODUCTION ENTRY", key="pe_save",
-                 use_container_width=True, type="primary", disabled=(total_pcs == 0)):
+                 use_container_width=True, type="primary",
+                 disabled=(total_pcs == 0)):
 
         log_df    = st.session_state.production_log.copy()
-        saved_ops = []
+        saved_log = []
 
         for op_name, data in op_totals.items():
             od     = op_info[op_name]
@@ -657,32 +737,35 @@ with tab_prod:
                 "Piece_Value_Rs": round(data["value"], 2),
             }
 
-            # DELETE existing duplicate row (if any) before inserting
+            # Delete any existing row for this exact 5-column key
             if not log_df.empty:
-                mask_del = (
-                    (log_df["Date"].astype(str)       == current_date)       &
-                    (log_df["Karigar_ID"].astype(str) == current_karigar_id) &
-                    (log_df["Challan_No"].astype(str) == challan_no)         &
-                    (log_df["Style"].astype(str)      == pe_style)           &
+                keep = ~(
+                    (log_df["Date"].astype(str)       == current_date)        &
+                    (log_df["Karigar_ID"].astype(str) == current_karigar_id)  &
+                    (log_df["Challan_No"].astype(str) == challan_no)          &
+                    (log_df["Style"].astype(str)      == pe_style)            &
                     (log_df["Operation"].astype(str)  == op_name)
                 )
-                log_df = log_df[~mask_del].copy()
+                log_df = log_df[keep].copy()
 
-            # INSERT fresh row
             log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
-            saved_ops.append(f"• {op_name}: {data['pieces']} pcs ({op_eff:.1f}%) — ₹{data['value']:.0f}")
+            saved_log.append(
+                f"• {op_name}: {data['pieces']} pcs ({op_eff:.1f}%) — ₹{data['value']:.0f}")
 
-        st.session_state.production_log    = log_df
-        st.session_state["prod_data_loaded"] = False
+        st.session_state.production_log      = log_df
+        st.session_state["prod_data_loaded"] = False   # allow reload on next render
         save_sheet("production_log", log_df)
 
-        st.success("✅ **Saved to Google Sheets!** 🟢\n\n" + "\n".join(saved_ops))
+        st.success("✅ **Saved to Google Sheets!** 🟢\n\n" + "\n".join(saved_log))
         st.balloons()
         st.rerun()
 
-    # ── DAY VIEW ──────────────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════
+    # DAY VIEW
+    # ══════════════════════════════════════════════════════════
     st.markdown("---")
     st.markdown('<div class="sec-hdr">👷 Day View</div>', unsafe_allow_html=True)
+
     if not st.session_state.production_log.empty:
         flt_d  = st.date_input("View Date", value=date.today(), key="prod_flt")
         day_pl = st.session_state.production_log[
@@ -695,9 +778,10 @@ with tab_prod:
 
             sv1, sv2 = st.tabs(["📋 All Entries", "👷 Karigar Summary"])
             with sv1:
-                sc = [c for c in ["Karigar_Name", "Challan_No", "Style", "Operation",
-                                   "Total_Pieces", "Target", "Efficiency_%", "Piece_Value_Rs"]
-                      if c in day_pl.columns]
+                sc = [c for c in [
+                    "Karigar_Name", "Challan_No", "Style", "Operation",
+                    "Total_Pieces", "Target", "Efficiency_%", "Piece_Value_Rs"]
+                    if c in day_pl.columns]
                 st.dataframe(day_pl[sc], use_container_width=True, hide_index=True)
             with sv2:
                 ks = day_pl.groupby(["Karigar_ID", "Karigar_Name"]).agg(
@@ -706,16 +790,22 @@ with tab_prod:
                     Total_Target = ("Target",         "sum"),
                     Piece_Value  = ("Piece_Value_Rs", "sum"),
                 ).reset_index()
-                ks["Efficiency_%"] = (ks["Total_Pieces"] / ks["Total_Target"].replace(0, 1) * 100).round(1)
+                ks["Efficiency_%"] = (
+                    ks["Total_Pieces"] / ks["Total_Target"].replace(0, 1) * 100
+                ).round(1)
                 ks["Grade"] = ks["Efficiency_%"].apply(
-                    lambda x: "⭐ A" if x >= 100 else "✅ B" if x >= 85 else "⚠️ C" if x >= 70 else "❌ D")
+                    lambda x: "⭐ A" if x >= 100 else
+                              "✅ B" if x >= 85  else
+                              "⚠️ C" if x >= 70  else "❌ D")
                 st.dataframe(ks, use_container_width=True, hide_index=True)
 
             e1, e2 = st.columns(2)
             excel_data, excel_ext, excel_mime = to_excel_bytes(day_pl)
-            with e1: st.download_button("📥 Excel" if EXCEL_AVAILABLE else "📥 CSV",
-                                         excel_data, f"prod_{flt_d}{excel_ext}", mime=excel_mime)
-            with e2: st.download_button("📥 CSV", to_csv_bytes(day_pl), f"prod_{flt_d}.csv")
+            with e1:
+                st.download_button("📥 Excel" if EXCEL_AVAILABLE else "📥 CSV",
+                                   excel_data, f"prod_{flt_d}{excel_ext}", mime=excel_mime)
+            with e2:
+                st.download_button("📥 CSV", to_csv_bytes(day_pl), f"prod_{flt_d}.csv")
         else:
             st.info("No entries for selected date.")
     else:
