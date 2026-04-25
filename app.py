@@ -408,25 +408,6 @@ with tab_prod:
         
         k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
-      with col_kar:
-        st.markdown("**👤 NAME (Karigar)**")
-        kdf = st.session_state.karigar_master.copy()
-        kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
-        kdf["Name"] = kdf["Name"].astype(str)
-        
-        srch = st.text_input("Search Karigar", key="ksrch", placeholder="Type name or ID")
-        if srch:
-            mask = (kdf["Name"].str.contains(srch, case=False, na=False) |
-                    kdf["Karigar_ID"].str.contains(srch, case=False, na=False))
-            kdf_f = kdf[mask]
-        else:
-            kdf_f = kdf
-        
-        if kdf_f.empty:
-            st.warning("No karigar found."); st.stop()
-        
-        k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
-        sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
         k_row = k_map[sel_k_key]
         
         # ✅ CLEAR FUNCTION
@@ -460,7 +441,6 @@ with tab_prod:
             st.info(f"📝 Data found for {k_row['Name']} on {pe_date} - Editing mode")
             prefilled_style = existing.iloc[0]["Style"]
             
-            # Prefill hour data
             for _, row in existing.iterrows():
                 op_name = str(row["Operation"])
                 for hcol in HOUR_COLS:
@@ -475,7 +455,6 @@ with tab_prod:
     if not all_styles:
         st.warning("No styles. Add in ⚙️ Master Data."); st.stop()
     
-    # Auto-select prefilled style
     style_idx = 0
     if prefilled_style and prefilled_style in all_styles:
         style_idx = all_styles.index(prefilled_style)
@@ -690,7 +669,6 @@ with tab_prod:
             with e2: st.download_button("📥 CSV", to_csv_bytes(day_pl), f"prod_{flt_d}.csv")
         else: st.info("No entries for selected date.")
     else: st.info("No production entries yet.")
-  
 # ══════════════════════════════════════════════════════════
 # TAB 3 — CHALLAN MANAGEMENT
 # ══════════════════════════════════════════════════════════
