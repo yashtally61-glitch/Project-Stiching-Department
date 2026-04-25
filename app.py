@@ -468,7 +468,7 @@ with tab_prod:
         k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
         k_row = k_map[sel_k_key]
-with col_kar:
+    with col_kar:
     st.markdown("**🔍 Search Karigar**")
     kdf = st.session_state.karigar_master.copy()
 
@@ -484,27 +484,25 @@ with col_kar:
     else:
         kdf_f = kdf
 
-    k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
+    if kdf_f.empty:
+        st.warning("No karigar found")
+        st.stop()
+
+    k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
     sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()))
 
     k_row = k_map[sel_k_key]
 
-    # 🔄 Reset form when karigar changes
+    # ✅ RESET ONLY THIS (single clean logic)
     current_kar_id = str(k_row["Karigar_ID"])
 
-    if "last_karigar" not in st.session_state:
-        st.session_state.last_karigar = current_kar_id
-
-    if st.session_state.last_karigar != current_kar_id:
+    if st.session_state.get("last_karigar") != current_kar_id:
         for h in HOUR_COLS:
             st.session_state[f"hv_{h}"] = 0
             st.session_state[f"op_{h}"] = ""
 
-        st.session_state.last_karigar = current_kar_id
+        st.session_state["last_karigar"] = current_kar_id
         st.rerun()
-
-    st.session_state.last_karigar = k_row["Karigar_ID"]
-    st.rerun()
         # ── KARIGAR CHANGE DETECT → RESET ALL HOUR FIELDS ──
         current_kar_id = str(k_row["Karigar_ID"])
         if st.session_state.get("_last_karigar_id") != current_kar_id:
