@@ -13,7 +13,7 @@ import io, hashlib, zipfile
 
 # ── GOOGLE SHEETS IMPORTS ─────────────────────────────────
 import gspread
-from gspread_dataframe import get_as_dataframe, set_with_dataframe(ws, df, include_index=False, include_column_header=True)
+from gspread_dataframe import get_as_dataframe, set_with_dataframe
 from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Stitching Costing — Yash Gallery", page_icon="🧵", layout="wide", initial_sidebar_state="expanded")
@@ -111,7 +111,7 @@ def save_sheet(tab_name: str, df: pd.DataFrame):
         except gspread.exceptions.WorksheetNotFound:
             ws = sh.add_worksheet(title=tab_name, rows=1000, cols=50)
         ws.clear()
-        set_with_dataframe(ws, df)
+        set_with_dataframe(ws, df, include_index=False, include_column_header=True)
     except Exception as e:
         st.error(f"Could not save {tab_name}: {e}")
 
