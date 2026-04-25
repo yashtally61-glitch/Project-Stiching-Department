@@ -436,73 +436,8 @@ with tab_prod:
     import_section("production_log", "production_log", "Production Log")
     st.markdown("---")
 
-    # ── DATE & KARIGAR ──────────────────────────────────
-    col_date, col_kar = st.columns([1,2])
-    with col_date:
-        pe_date = st.date_input("📅 Date", value=date.today(), key="pe_date")
-        # Date change pe bhi reset
-        if st.session_state.get("_last_pe_date") != str(pe_date):
-            for hcol in HOUR_COLS:
-                if f"op_{hcol}" in st.session_state:
-                    del st.session_state[f"op_{hcol}"]
-                if f"hv_{hcol}" in st.session_state:
-                    del st.session_state[f"hv_{hcol}"]
-            st.session_state["_last_pe_date"] = str(pe_date)
- col_date, col_kar = st.columns([1,2])
 
-with col_date:
-    pe_date = st.date_input("📅 Date", value=date.today(), key="pe_date")
-
-with col_kar:
-    st.markdown("**🔍 Search Karigar**")
     
-    kdf = st.session_state.karigar_master.copy()
-    kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
-    kdf["Name"] = kdf["Name"].astype(str)
-    
-    srch = st.text_input("Type name or ID", key="ksrch", placeholder="e.g. Ramesh or K001")
-    
-    if srch:
-        mask = (
-            kdf["Name"].str.contains(srch, case=False, na=False) |
-            kdf["Karigar_ID"].str.contains(srch, case=False, na=False)
-        )
-        kdf_f = kdf[mask]
-    else:
-        kdf_f = kdf
-    
-    if kdf_f.empty:
-        st.warning("No karigar found.")
-        st.stop()
-    
-    k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
-    sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
-    
-    k_row = k_map[sel_k_key]
-    
-    # 🔄 RESET when karigar changes
-    current_kar_id = str(k_row["Karigar_ID"])
-    
-    if st.session_state.get("last_karigar") != current_kar_id:
-        # Clear all hour inputs when karigar changes
-        for h in HOUR_COLS:
-            st.session_state[f"hv_{h}"] = 0
-            st.session_state[f"op_{h}"] = ""
-        
-        st.session_state["last_karigar"] = current_kar_id
-        st.rerun()
-
-    # 🔄 Reset when karigar changes
-    current_kar_id = str(k_row["Karigar_ID"])
-
-    if st.session_state.get("last_karigar") != current_kar_id:
-        for h in HOUR_COLS:
-            st.session_state[f"hv_{h}"] = 0
-            st.session_state[f"op_{h}"] = ""
-
-        st.session_state["last_karigar"] = current_kar_id
-        st.rerun()
-
     # ✅ RESET ONLY THIS (single clean logic)
     current_kar_id = str(k_row["Karigar_ID"])
 
