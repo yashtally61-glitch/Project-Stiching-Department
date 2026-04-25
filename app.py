@@ -374,18 +374,24 @@ with tab_dash:
         sc = [c for c in ["Karigar_Name","Challan_No","Style","Operation","Total_Pieces","Target","Efficiency_%","Piece_Value_Rs"] if c in tdpl.columns]
         st.dataframe(tdpl[sc], use_container_width=True, hide_index=True)
 # ══════════════════════════════════════════════════════════
-# TAB 2 — PRODUCTION ENTRY  ✅ FULLY FIXED v4.5
-# FIXES:
-#   1. Column headers (TIME / STYLE / WORK / TARGET QTY / ACTUAL QTY / EFFICIENCY)
-#      now render correctly with proper CSS
-#   2. Saved data (operation + qty) loads correctly on karigar/date selection
-#   3. Style change mid-day is handled — each style's data is kept separate
-#   4. Composite key = Date + Karigar + Challan + Style (no cross-contamination)
-#   5. Upsert save — no duplicate rows ever
+# TAB 2 — PRODUCTION ENTRY  ✅ FINAL FIXED v4.6
+#
+# ROOT CAUSE OF "old qty showing for new karigar":
+#   Streamlit number_input/selectbox IGNORE the value= parameter
+#   once their widget key already exists in st.session_state.
+#   Deleting the key and setting value= in the SAME render does nothing
+#   because the widget was already rendered before deletion ran.
+#
+# THE CORRECT FIX:
+#   Step 1 → detect composite key change
+#   Step 2 → delete all hour keys from session_state
+#   Step 3 → call st.rerun() IMMEDIATELY
+#   Step 4 → on the NEW render cycle, keys don't exist yet,
+#             so value= parameter is respected → shows 0 or saved data
 # ══════════════════════════════════════════════════════════
 with tab_prod:
-
-    # ── HEADER STYLE (fixes the broken header row) ────────────────────────────
+ 
+    # ── CSS ───────────────────────────────────────────────────────────────────
     st.markdown("""
     <style>
     .prod-header {
@@ -416,90 +422,106 @@ with tab_prod:
     }
     </style>
     """, unsafe_allow_html=True)
-
-    # ── HELPER: wipe all hour-level session keys ──────────────────────────────
+ 
+    # ── HELPER: wipe every hour key from session_state ────────────────────────
     def _clear_hour_state():
         for hcol in HOUR_COLS:
             for prefix in ("saved_hv_", "saved_op_", "inp_hv_", "sel_op_"):
                 k = f"{prefix}{hcol}"
                 if k in st.session_state:
                     del st.session_state[k]
-
+ 
     st.markdown('<div class="sec-hdr">📋 Production Entry — Stitching Day Work</div>',
                 unsafe_allow_html=True)
     lock_widget("prod")
     import_section("production_log", "production_log", "Production Log")
     st.markdown("---")
-
-    # ── DATE ─────────────────────────────────────────────────────────────────
+ 
+    # ══════════════════════════════════════════════════════════
+    # STEP 1 — DATE, KARIGAR, STYLE, CHALLAN  (context selectors)
+    # These run BEFORE the composite key check so we have all
+    # 4 values available to build the key.
+    # ══════════════════════════════════════════════════════════
     col_date, col_kar = st.columns([1, 2])
+ 
     with col_date:
         pe_date = st.date_input("📅 DATE", value=date.today(), key="pe_date")
-
-    # ── KARIGAR ───────────────────────────────────────────────────────────────
+ 
     with col_kar:
         st.markdown("**👤 NAME (Karigar)**")
         kdf = st.session_state.karigar_master.copy()
         kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
         kdf["Name"]       = kdf["Name"].astype(str)
-
+ 
         srch = st.text_input("Search Karigar", key="ksrch", placeholder="Type name or ID")
         kdf_f = kdf[
             kdf["Name"].str.contains(srch, case=False, na=False) |
             kdf["Karigar_ID"].str.contains(srch, case=False, na=False)
         ] if srch else kdf
-
+ 
         if kdf_f.empty:
             st.warning("No karigar found.")
             st.stop()
-
+ 
         k_map     = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
         k_row     = k_map[sel_k_key]
-
-    # ── STYLE ─────────────────────────────────────────────────────────────────
+ 
+    # Style selector
     sm         = st.session_state.style_master
     all_styles = sm["Style"].unique().tolist() if not sm.empty else []
     if not all_styles:
         st.warning("No styles. Add in ⚙️ Master Data.")
         st.stop()
-
     pe_style = st.selectbox("👗 STYLE", all_styles, key="pe_style")
-
-    # ── CHALLAN ───────────────────────────────────────────────────────────────
+ 
+    # Challan selector
     ch_df   = st.session_state.challan_master
     s_chall = ch_df[ch_df["Style"] == pe_style] if not ch_df.empty else pd.DataFrame()
     if s_chall.empty:
         st.warning(f"No challans for '{pe_style}'. Add in 🧾 Challan Management.")
         st.stop()
-
+ 
     ch_map = {}
     for _, r in s_chall.iterrows():
         qty = int(safe_num(pd.Series([r["Total_Qty"]])).iloc[0])
         rec = int(safe_num(pd.Series([r.get("Received_Qty", 0)])).iloc[0])
         lbl = f"{r['Challan_No']} | {r.get('Party','—')} | Qty:{qty} | Recv:{rec}"
         ch_map[lbl] = r
-
+ 
     sel_ch_key = st.selectbox("🧾 Challan", list(ch_map.keys()), key="sel_ch")
     ch_row     = ch_map[sel_ch_key]
     challan_no = str(ch_row["Challan_No"])
-
-    # ── COMPOSITE KEY  (Date + Karigar + Challan + Style) ────────────────────
-    # This is the key fix: all 4 dimensions must match before any data loads
+ 
+    # ══════════════════════════════════════════════════════════
+    # STEP 2 — COMPOSITE KEY CHECK
+    # If ANY of Date / Karigar / Challan / Style changed →
+    #   1. wipe all hour keys
+    #   2. set prod_data_loaded = False
+    #   3. st.rerun()  ← THIS is the critical fix
+    #      On the new render cycle the widget keys don't exist yet,
+    #      so value= parameter is honoured by Streamlit.
+    # ══════════════════════════════════════════════════════════
     current_karigar_id = str(k_row["Karigar_ID"])
     current_date       = str(pe_date)
     composite_key      = f"{current_date}__{current_karigar_id}__{challan_no}__{pe_style}"
-
+ 
     if st.session_state.get("last_composite_key", "") != composite_key:
-        _clear_hour_state()
-        st.session_state["last_composite_key"] = composite_key
-        st.session_state["prod_data_loaded"]   = False   # force reload
-
-    # ── LOAD SAVED DATA ───────────────────────────────────────────────────────
-    # FIX: filter on all 4 columns so data from a different style/challan
-    #      on the same day doesn't bleed into this entry form
+        _clear_hour_state()                                      # wipe stale keys
+        st.session_state["last_composite_key"] = composite_key  # save new context
+        st.session_state["prod_data_loaded"]   = False          # force data reload
+        st.rerun()                                               # ← THE KEY FIX
+        # After rerun: all inp_hv_* and sel_op_* keys are gone from session_state,
+        # so the widgets below will honour value= correctly.
+ 
+    # ══════════════════════════════════════════════════════════
+    # STEP 3 — LOAD SAVED DATA FROM PRODUCTION LOG
+    # Runs once per composite context (guarded by prod_data_loaded flag)
+    # Filters on all 4 columns — no cross-contamination between
+    # different styles / challans on the same day for same karigar
+    # ══════════════════════════════════════════════════════════
     pl = st.session_state.production_log
-
+ 
     if not st.session_state.get("prod_data_loaded", False):
         if not pl.empty:
             existing = pl[
@@ -510,12 +532,11 @@ with tab_prod:
             ]
             if not existing.empty:
                 st.success(
-                    f"✅ Loaded: **{k_row['Name']}** | "
-                    f"Challan {challan_no} | Style {pe_style} | {pe_date}"
+                    f"✅ Loaded saved data — **{k_row['Name']}** | "
+                    f"Challan {challan_no} | {pe_style} | {pe_date}"
                 )
-                # ── Prefill hour keys from saved rows ──────────────────────
-                # Each saved row = one Operation; spread its hour values into
-                # the matching hour slots
+                # Write into saved_* keys — widgets will pick these up
+                # because inp_hv_* / sel_op_* keys were wiped by rerun above
                 for _, row in existing.iterrows():
                     op_name = str(row["Operation"])
                     for hcol in HOUR_COLS:
@@ -525,23 +546,26 @@ with tab_prod:
                         except (ValueError, TypeError):
                             val = 0
                         if val > 0:
-                            # saved_op_* tells the selectbox which operation to show
-                            # saved_hv_* tells the number_input what value to show
                             st.session_state[f"saved_op_{hcol}"] = op_name
                             st.session_state[f"saved_hv_{hcol}"] = val
             else:
                 st.info(
                     f"📝 New entry — **{k_row['Name']}** | "
-                    f"Challan {challan_no} | Style {pe_style} | {pe_date}"
+                    f"Challan {challan_no} | {pe_style} | {pe_date}"
                 )
+        else:
+            st.info("📝 No production log yet. Start entering data below.")
+ 
         st.session_state["prod_data_loaded"] = True
-
-    # ── OPERATION INFO ────────────────────────────────────────────────────────
+ 
+    # ══════════════════════════════════════════════════════════
+    # STEP 4 — OPERATION INFO TABLE
+    # ══════════════════════════════════════════════════════════
     style_ops = sm[sm["Style"] == pe_style][["Operation", "Target", "Rate_Rs"]]
     if style_ops.empty:
         st.warning(f"No operations defined for style '{pe_style}'.")
         st.stop()
-
+ 
     op_info = {}
     for _, row in style_ops.iterrows():
         op_info[row["Operation"]] = {
@@ -550,14 +574,13 @@ with tab_prod:
             "Hourly_Target": max(1, int(row["Target"]) // 8),
         }
     op_list = [""] + style_ops["Operation"].tolist()
-
+ 
     # ══════════════════════════════════════════════════════════
-    # HOUR-WISE TABLE
+    # STEP 5 — HOUR-WISE ENTRY TABLE
     # ══════════════════════════════════════════════════════════
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry</div>', unsafe_allow_html=True)
-
-    # ── COLUMN HEADERS (FIX: proper CSS grid, not broken HTML spans) ──────────
+ 
     st.markdown("""
     <div class="prod-header">
       <span>⏰ TIME</span>
@@ -567,16 +590,16 @@ with tab_prod:
       <span>✅ ACTUAL QTY</span>
       <span>📊 EFFICIENCY</span>
     </div>""", unsafe_allow_html=True)
-
+ 
     from collections import defaultdict
     h_vals    = {}
     op_vals   = {}
     op_totals = defaultdict(lambda: {"pieces": 0, "hours": 0, "value": 0})
     prev_op   = ""
-
+ 
     for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
-
-        # ── Lunch break ──────────────────────────────────────────────────────
+ 
+        # Lunch break row
         if hcol == "H_13_14":
             st.markdown(
                 f'<div class="prod-row-lunch">🍽️ &nbsp; {hlbl} — Lunch Break</div>',
@@ -584,45 +607,43 @@ with tab_prod:
             op_vals[hcol] = None
             h_vals[hcol]  = 0
             continue
-
-        # ── 6-column row ─────────────────────────────────────────────────────
+ 
         c0, c1, c2, c3, c4, c5 = st.columns([0.8, 1.2, 2, 1.1, 1.4, 1.1])
-
-        # COL 0 — Time label
+ 
         with c0:
             st.markdown(
                 f'<div style="padding:10px 4px;font-size:.88rem;font-weight:700;'
                 f'color:#1a3a5c;white-space:nowrap;">{hlbl}</div>',
                 unsafe_allow_html=True)
-
-        # COL 1 — Style (read-only display)
+ 
         with c1:
             st.markdown(
                 f'<div style="text-align:center;padding:10px 4px;font-size:.82rem;'
                 f'color:#555;font-weight:600;">{pe_style}</div>',
                 unsafe_allow_html=True)
-
-        # COL 2 — Operation selectbox
+ 
         with c2:
+            # saved_op_ was set in Step 3 (if existing data found)
+            # because inp_hv_ key doesn't exist yet (wiped + rerun),
+            # Streamlit respects the index= parameter correctly
             saved_op  = st.session_state.get(f"saved_op_{hcol}", "")
             default_i = 0
             if saved_op and saved_op in op_list:
                 default_i = op_list.index(saved_op)
             elif prev_op and prev_op in op_list:
                 default_i = op_list.index(prev_op)
-
+ 
             sel_op = st.selectbox(
                 f"op_{hlbl}", op_list,
                 index=default_i,
                 key=f"sel_op_{hcol}",
                 label_visibility="collapsed")
-
+ 
             st.session_state[f"saved_op_{hcol}"] = sel_op
             op_vals[hcol] = sel_op if sel_op else None
             if sel_op:
                 prev_op = sel_op
-
-        # COL 3 — Hourly target (calculated)
+ 
         with c3:
             if sel_op and sel_op in op_info:
                 ht = op_info[sel_op]["Hourly_Target"]
@@ -632,35 +653,31 @@ with tab_prod:
                     unsafe_allow_html=True)
             else:
                 st.markdown(
-                    '<div style="text-align:center;padding:10px;color:#ccc;font-size:.9rem;">—</div>',
+                    '<div style="text-align:center;padding:10px;color:#ccc;">—</div>',
                     unsafe_allow_html=True)
-
-        # COL 4 — Actual qty number input
+ 
         with c4:
-            # FIX: read saved_hv_ value which was set during the prefill block above
+            # saved_hv_ was set in Step 3 (if existing data found) or is 0
+            # because inp_hv_ key doesn't exist (wiped + rerun),
+            # value= is respected → shows correct saved qty OR 0 for new karigar
             saved_val = int(st.session_state.get(f"saved_hv_{hcol}", 0))
             pcs = st.number_input(
                 f"qty_{hlbl}",
                 min_value=0, step=1,
-                value=saved_val,            # ← this is the key line that was broken
+                value=saved_val,
                 key=f"inp_hv_{hcol}",
                 label_visibility="collapsed")
             st.session_state[f"saved_hv_{hcol}"] = pcs
             h_vals[hcol] = pcs
-
-        # COL 5 — Efficiency badge
+ 
         with c5:
             if sel_op and sel_op in op_info and pcs > 0:
                 ht2  = op_info[sel_op]["Hourly_Target"]
                 eff  = round(pcs / ht2 * 100) if ht2 > 0 else 0
                 rate = op_info[sel_op]["Rate_Rs"]
-
-                badge_cls = "eff-ex" if eff >= 100 else ("eff-gd" if eff >= 75 else "eff-bl")
-                badge_ico = "✅" if eff >= 100 else ("⚡" if eff >= 75 else "⚠️")
-                st.markdown(
-                    f'<div class="{badge_cls}">{badge_ico} {eff}%</div>',
-                    unsafe_allow_html=True)
-
+                cls  = "eff-ex" if eff >= 100 else ("eff-gd" if eff >= 75 else "eff-bl")
+                ico  = "✅" if eff >= 100 else ("⚡" if eff >= 75 else "⚠️")
+                st.markdown(f'<div class="{cls}">{ico} {eff}%</div>', unsafe_allow_html=True)
                 op_totals[sel_op]["pieces"] += pcs
                 op_totals[sel_op]["hours"]  += 1
                 op_totals[sel_op]["value"]  += pcs * rate
@@ -668,13 +685,13 @@ with tab_prod:
                 st.markdown(
                     '<div style="text-align:center;color:#ccc;padding:10px;">—</div>',
                     unsafe_allow_html=True)
-
+ 
     # ══════════════════════════════════════════════════════════
-    # SESSION SUMMARY
+    # STEP 6 — SUMMARY
     # ══════════════════════════════════════════════════════════
     total_pcs   = sum(h_vals.values())
     total_value = sum(d["value"] for d in op_totals.values())
-
+ 
     if total_pcs > 0:
         st.markdown("---")
         st.markdown('<div class="sec-hdr">📊 Session Summary</div>', unsafe_allow_html=True)
@@ -687,41 +704,41 @@ with tab_prod:
             / len(op_totals) if op_totals else 0
         )
         sc3.metric("Avg Efficiency", f"{avg_eff_val:.1f}%")
-
+ 
         for op_name, data in op_totals.items():
-            od        = op_info[op_name]
-            d_eff     = data["pieces"] / od["Target"] * 100 if od["Target"] > 0 else 0
-            badge     = ("🏆 Excellent" if d_eff >= 100 else
-                         "⭐ Good"       if d_eff >= 85  else
-                         "✅ Fair"       if d_eff >= 70  else "⚠️ Below")
+            od    = op_info[op_name]
+            d_eff = data["pieces"] / od["Target"] * 100 if od["Target"] > 0 else 0
+            badge = ("🏆 Excellent" if d_eff >= 100 else
+                     "⭐ Good"       if d_eff >= 85  else
+                     "✅ Fair"       if d_eff >= 70  else "⚠️ Below")
             st.markdown(
                 f'<div class="ro-field">{op_name}: <b>{data["pieces"]} pcs</b> '
                 f'({d_eff:.1f}%) {badge} — ₹{data["value"]:.0f}</div>',
                 unsafe_allow_html=True)
-
+ 
     st.markdown("---")
     if total_pcs == 0:
         st.warning("⚠️ Enter at least one piece count to enable saving.")
-
+ 
     # ══════════════════════════════════════════════════════════
-    # SAVE — UPSERT (delete matching rows first, then insert)
+    # STEP 7 — UPSERT SAVE
     # ══════════════════════════════════════════════════════════
     if st.button("💾 SAVE PRODUCTION ENTRY", key="pe_save",
                  use_container_width=True, type="primary",
                  disabled=(total_pcs == 0)):
-
+ 
         log_df    = st.session_state.production_log.copy()
         saved_log = []
-
+ 
         for op_name, data in op_totals.items():
             od     = op_info[op_name]
             op_eff = round(data["pieces"] / od["Target"] * 100, 1) if od["Target"] > 0 else 0.0
-
+ 
             hour_row = {
                 hcol: (h_vals.get(hcol, 0) if op_vals.get(hcol) == op_name else 0)
                 for hcol in HOUR_COLS
             }
-
+ 
             new_row = {
                 "Date":           current_date,
                 "Karigar_ID":     k_row["Karigar_ID"],
@@ -736,8 +753,8 @@ with tab_prod:
                 "Efficiency_%":   op_eff,
                 "Piece_Value_Rs": round(data["value"], 2),
             }
-
-            # Delete any existing row for this exact 5-column key
+ 
+            # Delete existing duplicate row before inserting
             if not log_df.empty:
                 keep = ~(
                     (log_df["Date"].astype(str)       == current_date)        &
@@ -747,35 +764,35 @@ with tab_prod:
                     (log_df["Operation"].astype(str)  == op_name)
                 )
                 log_df = log_df[keep].copy()
-
+ 
             log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
             saved_log.append(
                 f"• {op_name}: {data['pieces']} pcs ({op_eff:.1f}%) — ₹{data['value']:.0f}")
-
+ 
         st.session_state.production_log      = log_df
-        st.session_state["prod_data_loaded"] = False   # allow reload on next render
+        st.session_state["prod_data_loaded"] = False
         save_sheet("production_log", log_df)
-
+ 
         st.success("✅ **Saved to Google Sheets!** 🟢\n\n" + "\n".join(saved_log))
         st.balloons()
         st.rerun()
-
+ 
     # ══════════════════════════════════════════════════════════
-    # DAY VIEW
+    # STEP 8 — DAY VIEW
     # ══════════════════════════════════════════════════════════
     st.markdown("---")
     st.markdown('<div class="sec-hdr">👷 Day View</div>', unsafe_allow_html=True)
-
+ 
     if not st.session_state.production_log.empty:
         flt_d  = st.date_input("View Date", value=date.today(), key="prod_flt")
         day_pl = st.session_state.production_log[
             st.session_state.production_log["Date"] == str(flt_d)].copy()
-
+ 
         if not day_pl.empty:
             for c in ["Total_Pieces", "Target", "Efficiency_%", "Piece_Value_Rs"]:
                 if c in day_pl.columns:
                     day_pl[c] = safe_num(day_pl[c])
-
+ 
             sv1, sv2 = st.tabs(["📋 All Entries", "👷 Karigar Summary"])
             with sv1:
                 sc = [c for c in [
@@ -798,7 +815,7 @@ with tab_prod:
                               "✅ B" if x >= 85  else
                               "⚠️ C" if x >= 70  else "❌ D")
                 st.dataframe(ks, use_container_width=True, hide_index=True)
-
+ 
             e1, e2 = st.columns(2)
             excel_data, excel_ext, excel_mime = to_excel_bytes(day_pl)
             with e1:
@@ -810,6 +827,7 @@ with tab_prod:
             st.info("No entries for selected date.")
     else:
         st.info("No production entries yet.")
+ 
 # ══════════════════════════════════════════════════════════
 # TAB 3 — CHALLAN MANAGEMENT
 # ══════════════════════════════════════════════════════════
