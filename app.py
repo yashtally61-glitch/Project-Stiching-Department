@@ -448,35 +448,14 @@ with tab_prod:
                 if f"hv_{hcol}" in st.session_state:
                     del st.session_state[f"hv_{hcol}"]
             st.session_state["_last_pe_date"] = str(pe_date)
-    with col_kar:
-        st.markdown("**🔍 Search Karigar**")
-        kdf = st.session_state.karigar_master.copy()
-        kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
-        kdf["Name"]       = kdf["Name"].astype(str)
-
-        srch = st.text_input("Type name or ID", key="ksrch", placeholder="e.g. Ramesh or K001")
-        if srch:
-            mask = (kdf["Name"].str.contains(srch, case=False, na=False) |
-                    kdf["Karigar_ID"].str.contains(srch, case=False, na=False))
-            kdf_f = kdf[mask]
-        else:
-            kdf_f = kdf
-
-        if kdf_f.empty:
-            st.warning("No karigar found."); st.stop()
-
-        k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
-        sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
-        k_row = k_map[sel_k_key]
-    with col_kar:
+ with col_kar:
     st.markdown("**🔍 Search Karigar**")
     kdf = st.session_state.karigar_master.copy()
 
     kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
     kdf["Name"]       = kdf["Name"].astype(str)
 
-    srch = st.text_input("Type name or ID", key="ksrch")
-
+    srch = st.text_input("Type name or ID", key="ksrch", placeholder="e.g. Ramesh or K001")
     if srch:
         mask = (kdf["Name"].str.contains(srch, case=False, na=False) |
                 kdf["Karigar_ID"].str.contains(srch, case=False, na=False))
@@ -485,11 +464,11 @@ with tab_prod:
         kdf_f = kdf
 
     if kdf_f.empty:
-        st.warning("No karigar found")
+        st.warning("No karigar found.")
         st.stop()
 
     k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
-    sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()))
+    sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
 
     k_row = k_map[sel_k_key]
 
