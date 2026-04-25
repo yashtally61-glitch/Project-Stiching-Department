@@ -468,7 +468,17 @@ with tab_prod:
         k_map = {f"{r['Karigar_ID']} — {r['Name']}": r for _,r in kdf_f.iterrows()}
         sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
         k_row = k_map[sel_k_key]
+# 🔄 Reset form when karigar changes
+if "last_karigar" not in st.session_state:
+    st.session_state.last_karigar = k_row["Karigar_ID"]
 
+if st.session_state.last_karigar != k_row["Karigar_ID"]:
+    for h in HOUR_COLS:
+        st.session_state[f"hv_{h}"] = 0
+        st.session_state[f"op_{h}"] = ""
+
+    st.session_state.last_karigar = k_row["Karigar_ID"]
+    st.rerun()
         # ── KARIGAR CHANGE DETECT → RESET ALL HOUR FIELDS ──
         current_kar_id = str(k_row["Karigar_ID"])
         if st.session_state.get("_last_karigar_id") != current_kar_id:
@@ -514,6 +524,20 @@ with tab_prod:
     sel_ch_key = st.selectbox("🧾 Challan", list(ch_map.keys()), key="sel_ch")
     ch_row     = ch_map[sel_ch_key]
     challan_no = ch_row["Challan_No"]
+# 📥 Fetch existing entry
+pl = st.session_state.production_log
+
+existing = pl[
+    (pl["Karigar_ID"] == k_row["Karigar_ID"]) &
+    (pl["Date"] == str(pe_date)) &
+    (pl["Challan_No"] == challan_no)
+]
+
+# 🔁 Prefill if data exists
+if not existing.empty:
+    row = existing.iloc[0]
+    for h in HOUR_COLS:
+        st.session_state[f"hv_{h}"] = int(row.get(h, 0))
     ch_qty = int(safe_num(pd.Series([ch_row["Total_Qty"]])).iloc[0])
     ch_rec = int(safe_num(pd.Series([ch_row.get("Received_Qty",0)])).iloc[0])
 
