@@ -512,9 +512,10 @@ with tab_prod:
     op_info = {}
     for _, row in style_ops.iterrows():
         op_info[row["Operation"]] = {
-            "Target":       int(row["Target"]),
-            "Rate_Rs":      float(row["Rate_Rs"]),
-            "Hourly_Target": max(1, int(row["Target"]) // 8),
+        "Target":       int(row["Target"]),
+        "Rate_Rs":      float(row["Rate_Rs"]),
+        "Hourly_Target": max(1, int(row["Target"])),  # Already per-hour target from Style Master
+    }
         }
     op_list = [""] + style_ops["Operation"].tolist()
 
