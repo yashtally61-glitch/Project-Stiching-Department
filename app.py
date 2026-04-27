@@ -683,21 +683,141 @@ with tab_prod:
         st.balloons()
         st.rerun()
 
-    # ── Day View ──
+# ── Day View ──
     st.markdown("---")
+    st.markdown('<div class="sec-hdr">📅 Day View Report</div>', unsafe_allow_html=True)
     if not st.session_state.production_log.empty:
         flt_d  = st.date_input("View Date", value=date.today(), key="prod_flt")
         day_pl = st.session_state.production_log[
-            st.session_state.production_log["Date"].apply(_clean_key) == _clean_key(flt_d)]
+            st.session_state.production_log["Date"].apply(_clean_key) == _clean_key(flt_d)].copy()
+
         if not day_pl.empty:
-            for c in ["Total_Pieces","Target","Efficiency_%","Piece_Value_Rs",
-                      "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs"]:
+            for c in ["Total_Pieces","Target","Rate_Rs","Efficiency_%",
+                      "Piece_Value_Rs","Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs"]:
                 if c in day_pl.columns:
                     day_pl[c] = safe_num(day_pl[c])
+
+            # ── Report 1: Basic Production Summary ──
+            st.markdown("**📋 Report 1 — Production Summary**")
             show_cols = [c for c in ["Karigar_Name","Challan_No","Style","Operation",
                 "Total_Pieces","Target","Efficiency_%","Budgeted_Expense_Rs",
                 "Actual_Expense_Rs","PL_Rs"] if c in day_pl.columns]
             st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+
+            # ── Report 2: Karigar Salary vs Piece Value Hour-wise ──
+            st.markdown("**💰 Report 2 — Karigar Salary Cost vs Actual Piece Value (Hour-wise)**")
+            st.markdown("""
+            <div class="info-box">
+            <b>Formula:</b>
+            Hourly Salary = Daily Rate ÷ 8 &nbsp;|&nbsp;
+            Actual Piece Value = Pieces × Rate &nbsp;|&nbsp;
+            Target Piece Value = Target ÷ 8 × Rate &nbsp;|&nbsp;
+            Net P&L = Actual Piece Value − Hourly Salary
+            </div>
+            """, unsafe_allow_html=True)
+
+            em_ref = st.session_state.employee_master.copy()
+            em_ref["E_Code"] = em_ref["E_Code"].astype(str)
+
+            report2_rows = []
+
+            for _, row in day_pl.iterrows():
+                kar_id   = str(row["Karigar_ID"]) if "Karigar_ID" in row else ""
+                kar_name = str(row.get("Karigar_Name", ""))
+                op_name  = str(row.get("Operation", ""))
+                rate_rs  = float(row.get("Rate_Rs", 0))
+                target   = int(row.get("Target", 0))
+                hourly_target = max(1, target // 8)
+
+                # Get salary info
+                em_row = em_ref[em_ref["E_Code"] == kar_id]
+                if not em_row.empty:
+                    daily_rate  = float(em_row["Daily_Rate_Rs"].values[0])
+                    hourly_sal  = round(daily_rate / 8, 2)
+                else:
+                    km_row = st.session_state.karigar_master
+                    km_row = km_row[km_row["Karigar_ID"].astype(str) == kar_id]
+                    daily_rate  = float(km_row["Daily_Rate_Rs"].values[0]) if not km_row.empty else 0
+                    hourly_sal  = round(daily_rate / 8, 2)
+
+                for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
+                    if hcol == "H_13_14":
+                        continue
+                    if hcol not in row:
+                        continue
+                    pcs = int(safe_num(pd.Series([row[hcol]])).iloc[0])
+                    if pcs == 0 and op_name == "":
+                        continue
+
+                    actual_piece_val  = round(pcs * rate_rs, 2)
+                    target_piece_val  = round(hourly_target * rate_rs, 2)
+                    net_pl            = round(actual_piece_val - hourly_sal, 2)
+                    target_pl         = round(target_piece_val - hourly_sal, 2)
+
+                    report2_rows.append({
+                        "Karigar":            kar_name,
+                        "Hour":               hlbl,
+                        "Operation":          op_name,
+                        "Hourly_Salary_Rs":   hourly_sal,
+                        "Pieces_Done":        pcs,
+                        "Hourly_Target_Pcs":  hourly_target,
+                        "Actual_Piece_Val_Rs":actual_piece_val,
+                        "Target_Piece_Val_Rs":target_piece_val,
+                        "Net_PL_Rs":          net_pl,
+                        "Target_PL_Rs":       target_pl,
+                        "Status": "✅ Profit" if net_pl >= 0 else "🔴 Loss",
+                    })
+
+            if report2_rows:
+                r2_df = pd.DataFrame(report2_rows)
+                st.dataframe(r2_df, use_container_width=True, hide_index=True)
+
+                st.markdown("---")
+                st.markdown("**📊 Report 2 — Karigar-wise Summary**")
+
+                r2_sum = r2_df.groupby("Karigar").agg(
+                    Total_Salary_Cost    = ("Hourly_Salary_Rs",    "sum"),
+                    Total_Actual_Val     = ("Actual_Piece_Val_Rs",  "sum"),
+                    Total_Target_Val     = ("Target_Piece_Val_Rs",  "sum"),
+                    Total_Net_PL         = ("Net_PL_Rs",            "sum"),
+                    Total_Target_PL      = ("Target_PL_Rs",         "sum"),
+                    Hours_Worked         = ("Hour",                 "count"),
+                ).round(2).reset_index()
+                r2_sum["Result"] = r2_sum["Total_Net_PL"].apply(
+                    lambda x: "✅ Profit" if x >= 0 else "🔴 Loss")
+                st.dataframe(r2_sum, use_container_width=True, hide_index=True)
+
+                # Grand Total
+                gt_sal = r2_sum["Total_Salary_Cost"].sum()
+                gt_act = r2_sum["Total_Actual_Val"].sum()
+                gt_tgt = r2_sum["Total_Target_Val"].sum()
+                gt_pl  = r2_sum["Total_Net_PL"].sum()
+                st.markdown(f"""
+                <div class="{'ok-box' if gt_pl >= 0 else 'warn-box'}">
+                  💼 <b>Grand Total</b> &nbsp;|&nbsp;
+                  Salary Paid: <b>₹{gt_sal:,.2f}</b> &nbsp;|&nbsp;
+                  Actual Piece Value: <b>₹{gt_act:,.2f}</b> &nbsp;|&nbsp;
+                  Target Piece Value: <b>₹{gt_tgt:,.2f}</b> &nbsp;|&nbsp;
+                  Net P&L: <b>₹{gt_pl:,.2f}</b> &nbsp;|&nbsp;
+                  {'✅ Overall Profit' if gt_pl >= 0 else '🔴 Overall Loss'}
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Download
+                dc1, dc2 = st.columns(2)
+                ex_r2, ext_r2, mime_r2 = to_excel_bytes(r2_df)
+                with dc1:
+                    st.download_button("📥 Hour-wise Report Excel", ex_r2,
+                        f"hourwise_cost_{flt_d}{ext_r2}", mime=mime_r2, key="dl_r2x")
+                with dc2:
+                    st.download_button("📥 Hour-wise Report CSV", to_csv_bytes(r2_df),
+                        f"hourwise_cost_{flt_d}.csv", key="dl_r2c")
+            else:
+                st.info("No hour-wise data for this date.")
+        else:
+            st.info("No production entries for selected date.")
 
     # ── Employee-wise Summary Download ──
     st.markdown("---")
