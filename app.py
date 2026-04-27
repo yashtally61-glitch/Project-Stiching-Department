@@ -681,6 +681,9 @@ with tab_prod:
                 "Rate_Rs": od["Rate_Rs"],
                 "Efficiency_%": op_eff,
                 "Piece_Value_Rs": round(data["value"], 2),
+                "Budgeted_Expense_Rs": round(od["Rate_Rs"] * od["Target"], 2),
+                "Actual_Expense_Rs":   round(data["value"], 2),
+                "PL_Rs":               round((od["Rate_Rs"] * od["Target"]) - data["value"], 2),
             }
 "Budgeted_Expense_Rs": round(od["Rate_Rs"] * od["Target"], 2),
                 "Actual_Expense_Rs":   round(data["value"], 2),
