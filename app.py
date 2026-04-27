@@ -599,38 +599,68 @@ with tab_prod:
             "Hourly_Target": max(1, int(row["Target"])),
         }
     op_list = [""] + style_ops["Operation"].tolist()
+    # Context variables session state mein store karo
+    st.session_state["_as_current_date"]       = current_date
+    st.session_state["_as_current_karigar_id"] = current_karigar_id
+    st.session_state["_as_challan_no"]         = challan_no
+    st.session_state["_as_current_style"]      = current_style
+    st.session_state["_as_karigar_name"]       = k_row["Name"]
+    st.session_state["_as_op_info"]            = op_info
+
     def auto_save():
         from collections import defaultdict
+
+        # Session state se context uthao
+        _current_date       = st.session_state.get("_as_current_date", "")
+        _current_karigar_id = st.session_state.get("_as_current_karigar_id", "")
+        _challan_no         = st.session_state.get("_as_challan_no", "")
+        _current_style      = st.session_state.get("_as_current_style", "")
+        _karigar_name       = st.session_state.get("_as_karigar_name", "")
+        _op_info            = st.session_state.get("_as_op_info", {})
+
+        if not _current_date or not _op_info:
+            return
+
         _h_vals  = {}
         _op_vals = {}
         _op_tots = defaultdict(lambda: {"pieces": 0, "hours": 0, "value": 0})
-        for _hc, _hl in zip(HOUR_COLS, HOUR_LBLS):
+
+        for _hc in HOUR_COLS:
             _h_vals[_hc]  = st.session_state.get(f"hv_{_hc}", 0)
             _op_vals[_hc] = st.session_state.get(f"sel_op_{_hc}", None)
+
         for _hc in HOUR_COLS:
-            if _hc == "H_13_14": continue
+            if _hc == "H_13_14":
+                continue
             _op  = _op_vals.get(_hc)
             _pcs = _h_vals.get(_hc, 0)
-            if _op and _op in op_info and _pcs > 0:
-                _od = op_info[_op]
+            if _op and _op in _op_info and _pcs > 0:
+                _od = _op_info[_op]
                 _op_tots[_op]["pieces"] += _pcs
                 _op_tots[_op]["hours"]  += 1
                 _op_tots[_op]["value"]  += _pcs * _od["Rate_Rs"]
+
         if not _op_tots:
             return
+
         _log_df = st.session_state.production_log.copy()
+
         for _op_name, _data in _op_tots.items():
-            _od      = op_info[_op_name]
+            _od      = _op_info[_op_name]
             _op_eff  = round(_data["pieces"] / _od["Target"] * 100, 1) if _od["Target"] > 0 else 0.0
-            _hr      = {hc: (_h_vals.get(hc, 0) if _op_vals.get(hc) == _op_name else 0) for hc in HOUR_COLS}
+            _hr      = {
+                hc: (_h_vals.get(hc, 0) if _op_vals.get(hc) == _op_name else 0)
+                for hc in HOUR_COLS
+            }
             _budg    = round(_od["Rate_Rs"] * _od["Target"], 2)
             _act     = round(_data["value"], 2)
+
             _new_row = {
-                "Date":                current_date,
-                "Karigar_ID":          current_karigar_id,
-                "Karigar_Name":        k_row["Name"],
-                "Challan_No":          challan_no,
-                "Style":               current_style,
+                "Date":                _current_date,
+                "Karigar_ID":          _current_karigar_id,
+                "Karigar_Name":        _karigar_name,
+                "Challan_No":          _challan_no,
+                "Style":               _current_style,
                 "Operation":           _op_name,
                 **_hr,
                 "Total_Pieces":        _data["pieces"],
@@ -643,7 +673,9 @@ with tab_prod:
                 "PL_Rs":               round(_act - _budg, 2),
                 "Saved_By":            st.session_state.get("current_user", "unknown"),
                 "Saved_By_Name":       st.session_state.get("current_name", ""),
+                "Save_Time":           datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
+
             if not _log_df.empty:
                 _log_df["_ck_date"]    = _log_df["Date"].apply(_clean_key)
                 _log_df["_ck_kar"]     = _log_df["Karigar_ID"].apply(_clean_key)
@@ -651,16 +683,18 @@ with tab_prod:
                 _log_df["_ck_style"]   = _log_df["Style"].apply(_clean_key)
                 _log_df["_ck_op"]      = _log_df["Operation"].apply(_clean_key)
                 _keep = ~(
-                    (_log_df["_ck_date"]    == current_date) &
-                    (_log_df["_ck_kar"]     == current_karigar_id) &
-                    (_log_df["_ck_challan"] == challan_no) &
-                    (_log_df["_ck_style"]   == current_style) &
+                    (_log_df["_ck_date"]    == _current_date) &
+                    (_log_df["_ck_kar"]     == _current_karigar_id) &
+                    (_log_df["_ck_challan"] == _challan_no) &
+                    (_log_df["_ck_style"]   == _current_style) &
                     (_log_df["_ck_op"]      == _clean_key(_op_name))
                 )
                 _log_df = _log_df[_keep].drop(
                     columns=["_ck_date","_ck_kar","_ck_challan","_ck_style","_ck_op"],
                     errors="ignore")
+
             _log_df = pd.concat([_log_df, pd.DataFrame([_new_row])], ignore_index=True)
+
         st.session_state.production_log = _log_df
         save_sheet("production_log", _log_df)
     # ── Hour Table ──
@@ -907,10 +941,21 @@ with tab_prod:
 
             # ── Report 1: Basic Production Summary ──
             st.markdown("**📋 Report 1 — Production Summary**")
-            show_cols = [c for c in ["Karigar_Name","Challan_No","Style","Operation",
-                "Total_Pieces","Target","Efficiency_%","Budgeted_Expense_Rs",
-                "Actual_Expense_Rs","PL_Rs",
-                "Saved_By_Name","Save_Time"] if c in day_pl.columns]
+            # Hour columns jo filled hain unko show karo
+            filled_hour_cols = []
+            for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
+                if hcol in day_pl.columns:
+                    if safe_num(day_pl[hcol]).sum() > 0:
+                        day_pl = day_pl.rename(columns={hcol: f"⏰{hlbl}"})
+                        filled_hour_cols.append(f"⏰{hlbl}")
+
+            show_cols = [c for c in [
+                "Karigar_Name","Challan_No","Style","Operation",
+                ] + filled_hour_cols + [
+                "Total_Pieces","Target","Efficiency_%",
+                "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs",
+                "Saved_By_Name","Save_Time"
+            ] if c in day_pl.columns]
             st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
             st.markdown("---")
 
