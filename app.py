@@ -509,7 +509,7 @@ with tab_prod:
         st.warning(f"No operations for '{pe_style}'.")
         st.stop()
 
-  op_info = {}
+    op_info = {}
     for _, row in style_ops.iterrows():
         op_info[row["Operation"]] = {
             "Target":        int(row["Target"]),
