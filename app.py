@@ -620,9 +620,9 @@ with tab_prod:
         sum_cols[0].metric("Total Pieces",   f"{total_pcs:,}")
         sum_cols[1].metric("Actual Expense", f"₹{total_value:,.2f}")
         sum_cols[2].metric("Budgeted Expense", f"₹{total_budget:,.2f}")
-        pl_val = total_budget - total_value
+       pl_val = total_value - total_budget
         st.markdown(
-            f'<div class="{"ok-box" if pl_val >= 0 else "warn-box"}">💰 <b>P&L: ₹{pl_val:,.2f}</b> &nbsp;|&nbsp; {"✅ Saving" if pl_val >= 0 else "⚠️ Over Budget"}</div>',
+            f'<div class="{"warn-box" if pl_val >= 0 else "ok-box"}">💰 <b>P&L: ₹{pl_val:,.2f}</b> &nbsp;|&nbsp; {"⚠️ Over Budget" if pl_val >= 0 else "✅ Under Budget"}</div>',
             unsafe_allow_html=True)
 
     st.markdown("---")
@@ -654,7 +654,7 @@ with tab_prod:
                 "Piece_Value_Rs":       actual,
                 "Budgeted_Expense_Rs":  budgeted,
                 "Actual_Expense_Rs":    actual,
-                "PL_Rs":                round(budgeted - actual, 2),
+                "PL_Rs":                round(actual  - budgeted, 2),
             }
 
             if not log_df.empty:
