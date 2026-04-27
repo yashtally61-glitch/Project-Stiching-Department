@@ -378,8 +378,7 @@ with tab_dash:
         sc = [c for c in ["Karigar_Name","Challan_No","Style","Operation","Total_Pieces","Target","Efficiency_%","Piece_Value_Rs"] if c in tdpl.columns]
         st.dataframe(tdpl[sc], use_container_width=True, hide_index=True)
 # ══════════════════════════════════════════════════════════
-# TAB 2 — PRODUCTION ENTRY v4.8 — FINAL FIX
-# Direct session state control for widgets
+# TAB 2 — PRODUCTION ENTRY
 # ══════════════════════════════════════════════════════════
 with tab_prod:
     st.markdown('<div class="sec-hdr">📋 Production Entry — Daily Work</div>', unsafe_allow_html=True)
@@ -388,7 +387,6 @@ with tab_prod:
     import_section("production_log", "production_log", "Production Log")
     st.markdown("---")
 
-    # ── HELPER: Clean key ──
     def _clean_key(val):
         if val is None:
             return ""
@@ -400,9 +398,6 @@ with tab_prod:
         except (ValueError, TypeError):
             return str(val).strip()
 
-    # ══════════════════════════════════════════════════════════
-    # SELECTIONS
-    # ══════════════════════════════════════════════════════════
     pe_date = st.date_input("📅 DATE", value=date.today(), key="pe_date")
 
     st.markdown("**👤 KARIGAR**")
@@ -447,46 +442,33 @@ with tab_prod:
     sel_ch_key = st.selectbox("🧾 Challan", list(ch_map.keys()), key="sel_ch")
     ch_row = ch_map[sel_ch_key]
 
-    # ══════════════════════════════════════════════════════════
-    # COMPOSITE KEY
-    # ══════════════════════════════════════════════════════════
-    current_date = _clean_key(pe_date)
+    current_date       = _clean_key(pe_date)
     current_karigar_id = _clean_key(k_row["Karigar_ID"])
-    challan_no = _clean_key(ch_row["Challan_No"])
-    current_style = _clean_key(pe_style)
+    challan_no         = _clean_key(ch_row["Challan_No"])
+    current_style      = _clean_key(pe_style)
 
     composite_key = f"{current_date}__{current_karigar_id}__{challan_no}__{current_style}"
     last_key = st.session_state.get("last_composite_key", "")
 
-    # ══════════════════════════════════════════════════════════
-    # KEY CHANGE → CLEAR + LOAD
-    # ══════════════════════════════════════════════════════════
     if last_key != composite_key:
         st.info(f"🔄 Loading {k_row['Name']}...")
-        
-        # STEP 1: Clear ALL hour widgets
         for hcol in HOUR_COLS:
-            st.session_state[f"hv_{hcol}"] = 0
+            st.session_state[f"hv_{hcol}"]    = 0
             st.session_state[f"sel_op_{hcol}"] = ""
-        
-        # STEP 2: Load saved data
         pl = st.session_state.production_log
         if not pl.empty:
             pl_check = pl.copy()
-            pl_check["_date"] = pl_check["Date"].apply(_clean_key)
-            pl_check["_kar"] = pl_check["Karigar_ID"].apply(_clean_key)
+            pl_check["_date"]    = pl_check["Date"].apply(_clean_key)
+            pl_check["_kar"]     = pl_check["Karigar_ID"].apply(_clean_key)
             pl_check["_challan"] = pl_check["Challan_No"].apply(_clean_key)
-            pl_check["_style"] = pl_check["Style"].apply(_clean_key)
-
+            pl_check["_style"]   = pl_check["Style"].apply(_clean_key)
             existing = pl_check[
-                (pl_check["_date"] == current_date) &
-                (pl_check["_kar"] == current_karigar_id) &
+                (pl_check["_date"]    == current_date) &
+                (pl_check["_kar"]     == current_karigar_id) &
                 (pl_check["_challan"] == challan_no) &
-                (pl_check["_style"] == current_style)
+                (pl_check["_style"]   == current_style)
             ]
-
             if not existing.empty:
-                # Populate widgets directly
                 for _, row in existing.iterrows():
                     op_name = str(row["Operation"]).strip()
                     for hcol in HOUR_COLS:
@@ -496,49 +478,32 @@ with tab_prod:
                         except (ValueError, TypeError):
                             val = 0
                         if val > 0:
-                            st.session_state[f"hv_{hcol}"] = val
+                            st.session_state[f"hv_{hcol}"]    = val
                             st.session_state[f"sel_op_{hcol}"] = op_name
-                
                 st.success(f"✅ Loaded {len(existing)} saved entry(s)")
-        
-        # STEP 3: Update tracking
         st.session_state["last_composite_key"] = composite_key
         st.rerun()
 
-    # ══════════════════════════════════════════════════════════
-    # EMPLOYEE INFO
-    # ══════════════════════════════════════════════════════════
     em_master = st.session_state.employee_master.copy()
     em_master["E_Code"] = em_master["E_Code"].astype(str)
     em_match = em_master[em_master["E_Code"] == str(k_row["Karigar_ID"])]
-    
     if not em_match.empty:
         em_r = em_match.iloc[0]
         st.markdown(f'<div class="ok-box">✅ {em_r["Name"]} | Daily: ₹{em_r["Daily_Rate_Rs"]} | Hourly: ₹{em_r["Hourly_Rate_Rs"]}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="ro-field">{k_row["Karigar_ID"]} | {k_row["Skill"]} | ₹{k_row["Daily_Rate_Rs"]}/day</div>', unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════
-    # CHALLAN INFO
-    # ══════════════════════════════════════════════════════════
     ch_qty = int(safe_num(pd.Series([ch_row["Total_Qty"]])).iloc[0])
-    ch_rec = int(safe_num(pd.Series([ch_row.get("Received_Qty",0)])).iloc[0])
-
+    ch_rec = int(safe_num(pd.Series([ch_row.get("Received_Qty", 0)])).iloc[0])
     st.markdown(f"""
-    <div class="challan-info-card">
-      <div class="ci-title">📋 Entry Details</div>
-      <div class="ci-row">
-        <div class="ci-item">👗 Style: <span>{pe_style}</span></div>
-        <div class="ci-item">🧾 Challan: <span>{challan_no}</span></div>
-        <div class="ci-item">📦 Total: <span>{ch_qty}</span></div>
-        <div class="ci-item">✅ Received: <span>{ch_rec}</span></div>
-      </div>
+    <div class="info-box">
+      📋 <b>Challan:</b> {challan_no} &nbsp;|&nbsp;
+      👗 <b>Style:</b> {pe_style} &nbsp;|&nbsp;
+      📦 <b>Total Qty:</b> {ch_qty} &nbsp;|&nbsp;
+      ✅ <b>Received:</b> {ch_rec}
     </div>
     """, unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════
-    # OPERATION INFO
-    # ══════════════════════════════════════════════════════════
     style_ops = sm[sm["Style"] == pe_style][["Operation", "Target", "Rate_Rs"]]
     if style_ops.empty:
         st.warning(f"No operations for '{pe_style}'.")
@@ -547,39 +512,49 @@ with tab_prod:
     op_info = {}
     for _, row in style_ops.iterrows():
         op_info[row["Operation"]] = {
-            "Target": int(row["Target"]),
-            "Rate_Rs": float(row["Rate_Rs"]),
+            "Target":       int(row["Target"]),
+            "Rate_Rs":      float(row["Rate_Rs"]),
             "Hourly_Target": max(1, int(row["Target"]) // 8),
         }
     op_list = [""] + style_ops["Operation"].tolist()
 
-    # ══════════════════════════════════════════════════════════
-    # HOUR TABLE
-    # ══════════════════════════════════════════════════════════
+    # ── Hour Table ──
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Entry</div>', unsafe_allow_html=True)
+
+    # FIX 1: Clear visible header row
     st.markdown("""
-    <div class="entry-table-hdr">
-      <span>TIME</span>
-      <span>WORK</span>
-      <span>TARGET</span>
-      <span>ACTUAL</span>
-      <span>EFF</span>
+    <div style="display:grid;grid-template-columns:1fr 3fr 1.2fr 1.4fr 1.2fr;
+                background:#1a3a5c;color:#fff;padding:9px 14px;border-radius:6px;
+                font-size:.82rem;font-weight:700;letter-spacing:.06em;
+                text-transform:uppercase;margin-bottom:6px;gap:8px;">
+      <span style="text-align:center;">⏰ TIME</span>
+      <span style="text-align:center;">🔧 WORK</span>
+      <span style="text-align:center;">🎯 TARGET</span>
+      <span style="text-align:center;">✏️ ACTUAL</span>
+      <span style="text-align:center;">📊 EFF%</span>
     </div>
     """, unsafe_allow_html=True)
 
     from collections import defaultdict
-    h_vals = {}
-    op_vals = {}
+    h_vals    = {}
+    op_vals   = {}
     op_totals = defaultdict(lambda: {"pieces": 0, "hours": 0, "value": 0})
-    prev_op = ""
+    prev_op   = ""
 
     for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
 
         if hcol == "H_13_14":
-            st.markdown(f'<div class="entry-row-lunch"><div class="time-lbl" style="color:#9e9e9e;">{hlbl}</div><div style="padding:0 12px;font-size:.82rem;color:#bdbdbd;font-style:italic;">🍽️ Lunch</div></div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style="display:grid;grid-template-columns:1fr 3fr 1.2fr 1.4fr 1.2fr;
+                        background:#fafafa;border:1px dashed #e0e0e0;border-radius:6px;
+                        padding:6px 14px;margin:2px 0;align-items:center;gap:8px;">
+              <span style="text-align:center;font-weight:700;color:#9e9e9e;">{hlbl}</span>
+              <span style="color:#bdbdbd;font-style:italic;font-size:.82rem;">🍽️ Lunch Break</span>
+            </div>
+            """, unsafe_allow_html=True)
             op_vals[hcol] = None
-            h_vals[hcol] = 0
+            h_vals[hcol]  = 0
             continue
 
         row_c = st.columns([1, 3, 1.2, 1.4, 1.2])
@@ -588,23 +563,19 @@ with tab_prod:
             st.markdown(f'<div style="padding:10px;text-align:center;font-size:.88rem;font-weight:700;color:#2c5aa0;">{hlbl}</div>', unsafe_allow_html=True)
 
         with row_c[1]:
-            # FIXED: Initialize if not exists
             if f"sel_op_{hcol}" not in st.session_state:
                 st.session_state[f"sel_op_{hcol}"] = ""
-            
-            saved_op = st.session_state[f"sel_op_{hcol}"]
+            saved_op  = st.session_state[f"sel_op_{hcol}"]
             default_i = 0
             if saved_op and saved_op in op_list:
                 default_i = op_list.index(saved_op)
             elif prev_op and prev_op in op_list:
                 default_i = op_list.index(prev_op)
-
             sel_op = st.selectbox(
                 f"op_{hlbl}", op_list,
                 index=default_i,
                 key=f"sel_op_{hcol}",
                 label_visibility="collapsed")
-
             op_vals[hcol] = sel_op if sel_op else None
             if sel_op:
                 prev_op = sel_op
@@ -617,165 +588,170 @@ with tab_prod:
                 st.markdown('<div style="padding:10px;text-align:center;color:#bbb;">—</div>', unsafe_allow_html=True)
 
         with row_c[3]:
-            # FIXED: Initialize if not exists
             if f"hv_{hcol}" not in st.session_state:
                 st.session_state[f"hv_{hcol}"] = 0
-            
             pcs = st.number_input(
                 f"pcs_{hlbl}",
                 min_value=0, step=1,
                 key=f"hv_{hcol}",
                 label_visibility="collapsed")
-            
             h_vals[hcol] = pcs
 
         with row_c[4]:
             if sel_op and sel_op in op_info and pcs > 0:
-                ht2 = op_info[sel_op]["Hourly_Target"]
-                eff = round(pcs / ht2 * 100) if ht2 > 0 else 0
+                ht2  = op_info[sel_op]["Hourly_Target"]
+                eff  = round(pcs / ht2 * 100) if ht2 > 0 else 0
                 rate = op_info[sel_op]["Rate_Rs"]
-                cls = "eff-ex" if eff >= 100 else ("eff-gd" if eff >= 75 else "eff-bl")
+                cls  = "eff-ex" if eff >= 100 else ("eff-gd" if eff >= 75 else "eff-bl")
                 st.markdown(f'<div class="{cls}">{eff}%</div>', unsafe_allow_html=True)
                 op_totals[sel_op]["pieces"] += pcs
-                op_totals[sel_op]["hours"] += 1
-                op_totals[sel_op]["value"] += pcs * rate
+                op_totals[sel_op]["hours"]  += 1
+                op_totals[sel_op]["value"]  += pcs * rate
             else:
                 st.markdown('<div style="text-align:center;color:#bbb;padding:10px;">—</div>', unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════
-    # SUMMARY & SAVE
-    # ══════════════════════════════════════════════════════════
+    # ── Summary ──
     total_pcs = sum(h_vals.values())
-
     if total_pcs > 0:
         st.markdown("---")
         sum_cols = st.columns(3)
-        sum_cols[0].metric("Total Pieces", f"{total_pcs:,}")
         total_value = sum(d["value"] for d in op_totals.values())
-        sum_cols[1].metric("Piece Value", f"₹{total_value:,.2f}")
-        avg_eff = (sum(op_totals[op]["pieces"] / op_info[op]["Target"] * 100
-                      for op in op_totals if op_info[op]["Target"] > 0) / len(op_totals)) if op_totals else 0
-        sum_cols[2].metric("Avg Efficiency", f"{avg_eff:.1f}%")
+        total_budget = sum(op_info[op]["Rate_Rs"] * op_info[op]["Target"] for op in op_totals)
+        sum_cols[0].metric("Total Pieces",   f"{total_pcs:,}")
+        sum_cols[1].metric("Actual Expense", f"₹{total_value:,.2f}")
+        sum_cols[2].metric("Budgeted Expense", f"₹{total_budget:,.2f}")
+        pl_val = total_budget - total_value
+        st.markdown(
+            f'<div class="{"ok-box" if pl_val >= 0 else "warn-box"}">💰 <b>P&L: ₹{pl_val:,.2f}</b> &nbsp;|&nbsp; {"✅ Saving" if pl_val >= 0 else "⚠️ Over Budget"}</div>',
+            unsafe_allow_html=True)
 
     st.markdown("---")
-    
-    if st.button("💾 Save", key="pe_save", use_container_width=True, type="primary", disabled=(total_pcs==0)):
+
+    if st.button("💾 Save", key="pe_save", use_container_width=True, type="primary", disabled=(total_pcs == 0)):
 
         log_df = st.session_state.production_log.copy()
 
         for op_name, data in op_totals.items():
-            od = op_info[op_name]
+            od     = op_info[op_name]
             op_eff = round(data["pieces"] / od["Target"] * 100, 1) if od["Target"] > 0 else 0.0
             hour_row = {hcol: (h_vals.get(hcol, 0) if op_vals.get(hcol) == op_name else 0) for hcol in HOUR_COLS}
 
-            new_row = {
-                "Date": current_date,
-                "Karigar_ID": current_karigar_id,
-                "Karigar_Name": k_row["Name"],
-                "Challan_No": challan_no,
-                "Style": current_style,
-                "Operation": op_name,
-                **hour_row,
-                "Total_Pieces": data["pieces"],
-                "Target": od["Target"],
-                "Rate_Rs": od["Rate_Rs"],
-                "Efficiency_%": op_eff,
-                "Piece_Value_Rs": round(data["value"], 2),
-                "Budgeted_Expense_Rs": round(od["Rate_Rs"] * od["Target"], 2),
-                "Actual_Expense_Rs":   round(data["value"], 2),
-                "PL_Rs":               round((od["Rate_Rs"] * od["Target"]) - data["value"], 2),
-            }
-"Budgeted_Expense_Rs": round(od["Rate_Rs"] * od["Target"], 2),
-                "Actual_Expense_Rs":   round(data["value"], 2),
-                "PL_Rs":               round((od["Rate_Rs"] * od["Target"]) - data["value"], 2),
-            # Upsert
-            if not log_df.empty:
-                log_df["_ck_date"] = log_df["Date"].apply(_clean_key)
-                log_df["_ck_kar"] = log_df["Karigar_ID"].apply(_clean_key)
-                log_df["_ck_challan"] = log_df["Challan_No"].apply(_clean_key)
-                log_df["_ck_style"] = log_df["Style"].apply(_clean_key)
-                log_df["_ck_op"] = log_df["Operation"].apply(_clean_key)
+            budgeted = round(od["Rate_Rs"] * od["Target"], 2)
+            actual   = round(data["value"], 2)
 
+            new_row = {
+                "Date":                 current_date,
+                "Karigar_ID":           current_karigar_id,
+                "Karigar_Name":         k_row["Name"],
+                "Challan_No":           challan_no,
+                "Style":                current_style,
+                "Operation":            op_name,
+                **hour_row,
+                "Total_Pieces":         data["pieces"],
+                "Target":               od["Target"],
+                "Rate_Rs":              od["Rate_Rs"],
+                "Efficiency_%":         op_eff,
+                "Piece_Value_Rs":       actual,
+                "Budgeted_Expense_Rs":  budgeted,
+                "Actual_Expense_Rs":    actual,
+                "PL_Rs":                round(budgeted - actual, 2),
+            }
+
+            if not log_df.empty:
+                log_df["_ck_date"]    = log_df["Date"].apply(_clean_key)
+                log_df["_ck_kar"]     = log_df["Karigar_ID"].apply(_clean_key)
+                log_df["_ck_challan"] = log_df["Challan_No"].apply(_clean_key)
+                log_df["_ck_style"]   = log_df["Style"].apply(_clean_key)
+                log_df["_ck_op"]      = log_df["Operation"].apply(_clean_key)
                 keep = ~(
-                    (log_df["_ck_date"] == current_date) &
-                    (log_df["_ck_kar"] == current_karigar_id) &
+                    (log_df["_ck_date"]    == current_date) &
+                    (log_df["_ck_kar"]     == current_karigar_id) &
                     (log_df["_ck_challan"] == challan_no) &
-                    (log_df["_ck_style"] == current_style) &
-                    (log_df["_ck_op"] == _clean_key(op_name))
+                    (log_df["_ck_style"]   == current_style) &
+                    (log_df["_ck_op"]      == _clean_key(op_name))
                 )
-                log_df = log_df[keep].drop(columns=["_ck_date","_ck_kar","_ck_challan","_ck_style","_ck_op"], errors="ignore")
+                log_df = log_df[keep].drop(
+                    columns=["_ck_date","_ck_kar","_ck_challan","_ck_style","_ck_op"],
+                    errors="ignore")
 
             log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
 
         st.session_state.production_log = log_df
         save_sheet("production_log", log_df)
-
-        # Force reset for next entry
         st.session_state["last_composite_key"] = ""
-
         st.success("✅ Saved!")
         st.balloons()
         st.rerun()
 
-    # ══════════════════════════════════════════════════════════
-    # DAY VIEW
-    # ══════════════════════════════════════════════════════════
+    # ── Day View ──
     st.markdown("---")
     if not st.session_state.production_log.empty:
-        flt_d = st.date_input("View Date", value=date.today(), key="prod_flt")
+        flt_d  = st.date_input("View Date", value=date.today(), key="prod_flt")
         day_pl = st.session_state.production_log[
             st.session_state.production_log["Date"].apply(_clean_key) == _clean_key(flt_d)]
         if not day_pl.empty:
-            for c in ["Total_Pieces", "Target", "Efficiency_%", "Piece_Value_Rs"]:
+            for c in ["Total_Pieces","Target","Efficiency_%","Piece_Value_Rs",
+                      "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs"]:
                 if c in day_pl.columns:
                     day_pl[c] = safe_num(day_pl[c])
-            st.dataframe(day_pl[[c for c in ["Karigar_Name","Challan_No","Style","Operation","Total_Pieces","Target","Efficiency_%","Piece_Value_Rs"] if c in day_pl.columns]], use_container_width=True, hide_index=True)
-            # ── Employee-wise Summary Download ──
+            show_cols = [c for c in ["Karigar_Name","Challan_No","Style","Operation",
+                "Total_Pieces","Target","Efficiency_%","Budgeted_Expense_Rs",
+                "Actual_Expense_Rs","PL_Rs"] if c in day_pl.columns]
+            st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
+
+    # ── Employee-wise Summary Download ──
     st.markdown("---")
     st.markdown('<div class="sec-hdr">📥 Employee-wise Data Summary Download</div>', unsafe_allow_html=True)
-    if not pl_all.empty:
+    pl_prod = st.session_state.production_log
+    if not pl_prod.empty:
         dl_from = st.date_input("From Date", value=date.today()-timedelta(days=29), key="dl_from")
         dl_to   = st.date_input("To Date",   value=date.today(),                    key="dl_to")
-        pl_dl = pl_all.copy()
+        pl_dl   = pl_prod.copy()
         pl_dl["Date_dt"] = pd.to_datetime(pl_dl["Date"], errors="coerce")
-        pl_dl = pl_dl[(pl_dl["Date_dt"] >= pd.Timestamp(dl_from)) & (pl_dl["Date_dt"] <= pd.Timestamp(dl_to))]
-
+        pl_dl = pl_dl[
+            (pl_dl["Date_dt"] >= pd.Timestamp(dl_from)) &
+            (pl_dl["Date_dt"] <= pd.Timestamp(dl_to))
+        ]
         if not pl_dl.empty:
-            for c in ["Total_Pieces","Target","Rate_Rs","Piece_Value_Rs",
+            for c in ["Total_Pieces","Rate_Rs","Piece_Value_Rs",
                       "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs","Efficiency_%"]:
-                if c in pl_dl.columns: pl_dl[c] = safe_num(pl_dl[c])
+                if c in pl_dl.columns:
+                    pl_dl[c] = safe_num(pl_dl[c])
 
             emp_sum = pl_dl.groupby(["Karigar_ID","Karigar_Name"]).agg(
-                Days           = ("Date",              "nunique"),
-                Total_Pieces   = ("Total_Pieces",      "sum"),
-                Budgeted_Rs    = ("Budgeted_Expense_Rs","sum"),
-                Actual_Rs      = ("Actual_Expense_Rs", "sum"),
-                PL_Rs          = ("PL_Rs",             "sum"),
-                Avg_Efficiency = ("Efficiency_%",       "mean"),
-                Operations     = ("Operation",         "nunique"),
+                Days             = ("Date",               "nunique"),
+                Total_Pieces     = ("Total_Pieces",       "sum"),
+                Budgeted_Rs      = ("Budgeted_Expense_Rs","sum"),
+                Actual_Rs        = ("Actual_Expense_Rs",  "sum"),
+                PL_Rs            = ("PL_Rs",              "sum"),
+                Avg_Efficiency   = ("Efficiency_%",        "mean"),
+                Operations       = ("Operation",          "nunique"),
             ).round(2).reset_index()
             emp_sum["Avg_Efficiency"] = emp_sum["Avg_Efficiency"].round(1)
             emp_sum["Grade"] = emp_sum["Avg_Efficiency"].apply(
-                lambda x: "A–Excellent" if x>=100 else ("B–Good" if x>=85 else ("C–Average" if x>=70 else "D–Below Avg")))
+                lambda x: "A–Excellent" if x >= 100 else (
+                          "B–Good"      if x >= 85  else (
+                          "C–Average"   if x >= 70  else "D–Below Avg")))
 
             st.dataframe(emp_sum, use_container_width=True, hide_index=True)
 
             dc1, dc2 = st.columns(2)
-            excel_data, excel_ext, excel_mime = to_excel_bytes(emp_sum)
+            excel_s, ext_s, mime_s = to_excel_bytes(emp_sum)
             with dc1:
-                st.download_button("📥 Employee Summary (Excel/CSV)", excel_data,
-                    f"emp_summary_{dl_from}_{dl_to}{excel_ext}", mime=excel_mime, key="dl_emp_x")
+                st.download_button("📥 Employee Summary Excel", excel_s,
+                    f"emp_summary_{dl_from}_{dl_to}{ext_s}", mime=mime_s, key="dl_emp_x")
             with dc2:
-                st.download_button("📥 Employee Summary (CSV)", to_csv_bytes(emp_sum),
+                st.download_button("📥 Employee Summary CSV", to_csv_bytes(emp_sum),
                     f"emp_summary_{dl_from}_{dl_to}.csv", key="dl_emp_c")
 
-            # Detailed log download
-            detail_cols = [c for c in ["Date","Karigar_ID","Karigar_Name","Challan_No","Style",
-                "Operation","Total_Pieces","Target","Rate_Rs",
-                "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs","Efficiency_%"] if c in pl_dl.columns]
-            excel_d2, ext_d2, mime_d2 = to_excel_bytes(pl_dl[detail_cols])
-            st.download_button("📥 Full Detail Log (All Employees)", excel_d2,
-                f"detail_log_{dl_from}_{dl_to}{ext_d2}", mime=mime_d2, key="dl_det")
+            detail_cols = [c for c in [
+                "Date","Karigar_ID","Karigar_Name","Challan_No","Style","Operation",
+                "Total_Pieces","Target","Rate_Rs",
+                "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs","Efficiency_%"
+            ] if c in pl_dl.columns]
+            excel_d, ext_d, mime_d = to_excel_bytes(pl_dl[detail_cols])
+            st.download_button("📥 Full Detail Log (All Employees)", excel_d,
+                f"detail_log_{dl_from}_{dl_to}{ext_d}", mime=mime_d, key="dl_det")
         else:
             st.info("No data in selected date range.")
     else:
