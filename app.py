@@ -617,13 +617,13 @@ with tab_prod:
         sum_cols = st.columns(3)
         total_value = sum(d["value"] for d in op_totals.values())
         total_budget = sum(op_info[op]["Rate_Rs"] * op_info[op]["Target"] for op in op_totals)
-        sum_cols[0].metric("Total Pieces",   f"{total_pcs:,}")
+        sum_cols[0].metric("Total Pieces", f"{total_pcs:,}")
         sum_cols[1].metric("Actual Expense", f"₹{total_value:,.2f}")
         sum_cols[2].metric("Budgeted Expense", f"₹{total_budget:,.2f}")
-       pl_val = total_value - total_budget
-        st.markdown(
-            f'<div class="{"warn-box" if pl_val >= 0 else "ok-box"}">💰 <b>P&L: ₹{pl_val:,.2f}</b> &nbsp;|&nbsp; {"⚠️ Over Budget" if pl_val >= 0 else "✅ Under Budget"}</div>',
-            unsafe_allow_html=True)
+        pl_val = total_value - total_budget
+        pl_css = "warn-box" if pl_val >= 0 else "ok-box"
+        pl_txt = "⚠️ Over Budget" if pl_val >= 0 else "✅ Under Budget"
+        st.markdown(f'<div class="{pl_css}">💰 <b>P&L: ₹{pl_val:,.2f}</b> &nbsp;|&nbsp; {pl_txt}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
 
