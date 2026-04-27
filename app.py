@@ -374,68 +374,16 @@ with tab_dash:
         sc = [c for c in ["Karigar_Name","Challan_No","Style","Operation","Total_Pieces","Target","Efficiency_%","Piece_Value_Rs"] if c in tdpl.columns]
         st.dataframe(tdpl[sc], use_container_width=True, hide_index=True)
 # ══════════════════════════════════════════════════════════
-# TAB 2 — PRODUCTION ENTRY  ✅ DEFINITIVE FIXED v4.7
-#
-# ROOT CAUSE EXPLAINED:
-# ─────────────────────
-# Google Sheets loads ALL data via gspread. When a cell contains
-# a number, gspread returns it as float (e.g. 5 → 5.0, 0 → NaN).
-# This causes TWO silent failures:
-#
-# FAILURE 1 — Challan_No type mismatch
-#   Saved as: "10220-2526" (string)
-#   Loaded back as: 10220.0 (float, if challan looks numeric)
-#   str(10220.0) = "10220.0" ≠ "10220-2526"
-#   → filter finds nothing → form shows blank (new entry) every time
-#
-# FAILURE 2 — Hour column NaN
-#   Saved as: 0
-#   Google Sheets blank cell → loaded as NaN
-#   int(float(NaN)) → ValueError → except catches → val=0 → nothing prefills
-#   (This part is already handled by try/except but worth knowing)
-#
-# THE FIX:
-#   Normalise ALL string keys with _clean_key() before any comparison.
-#   _clean_key() strips whitespace, strips trailing .0 from floats,
-#   so "10220.0" → "10220" and "10220-2526" → "10220-2526" match correctly.
-#   Also fill NaN hour cells with 0 before reading.
+# TAB 2 — PRODUCTION ENTRY v4.5 — Per-Karigar Data Persistence
 # ══════════════════════════════════════════════════════════
 with tab_prod:
+    st.markdown('<div class="sec-hdr">📋 Production Entry — Daily Work</div>', unsafe_allow_html=True)
 
-    # ── CSS ───────────────────────────────────────────────────────────────────
-    st.markdown("""
-    <style>
-    .prod-header {
-        display: grid;
-        grid-template-columns: 80px 120px 1fr 110px 130px 110px;
-        background: #1a3a5c;
-        color: #fff;
-        font-size: .75rem;
-        font-weight: 700;
-        letter-spacing: .07em;
-        text-transform: uppercase;
-        padding: 8px 12px;
-        border-radius: 6px;
-        margin: 8px 0 2px 0;
-        gap: 8px;
-    }
-    .prod-header span { display: flex; align-items: center; }
-    .prod-row-lunch {
-        background: #fafafa;
-        border: 1px dashed #e0e0e0;
-        border-radius: 6px;
-        padding: 8px 12px;
-        margin: 3px 0;
-        color: #bdbdbd;
-        font-size: .82rem;
-        font-style: italic;
-        text-align: center;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    lock_widget("prod")
+    import_section("production_log", "production_log", "Production Log")
+    st.markdown("---")
 
-    # ── HELPER 1: normalise any value to a clean string ──────────────────────
-    # Handles: float 10220.0 → "10220", NaN → "", "K001 " → "K001"
+    # ── HELPER: Clean key for comparison (handles Google Sheets float/string mismatch) ──
     def _clean_key(val):
         if val is None:
             return ""
@@ -443,24 +391,17 @@ with tab_prod:
             f = float(val)
             if pd.isna(f):
                 return ""
-            # if it's a whole number stored as float, drop the .0
             return str(int(f)) if f == int(f) else str(f)
         except (ValueError, TypeError):
             return str(val).strip()
 
-    # ── HELPER 2: wipe all hour widget keys ──────────────────────────────────
+    # ── HELPER: Wipe all hour widget keys ──
     def _clear_hour_state():
         for hcol in HOUR_COLS:
             for prefix in ("saved_hv_", "saved_op_", "inp_hv_", "sel_op_"):
                 k = f"{prefix}{hcol}"
                 if k in st.session_state:
                     del st.session_state[k]
-
-    st.markdown('<div class="sec-hdr">📋 Production Entry — Stitching Day Work</div>',
-                unsafe_allow_html=True)
-    lock_widget("prod")
-    import_section("production_log", "production_log", "Production Log")
-    st.markdown("---")
 
     # ══════════════════════════════════════════════════════════
     # CONTEXT SELECTORS — Date / Karigar / Style / Challan
@@ -471,7 +412,7 @@ with tab_prod:
         pe_date = st.date_input("📅 DATE", value=date.today(), key="pe_date")
 
     with col_kar:
-        st.markdown("**👤 NAME (Karigar)**")
+        st.markdown("**👤 KARIGAR**")
         kdf = st.session_state.karigar_master.copy()
         kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
         kdf["Name"]       = kdf["Name"].astype(str)
@@ -513,9 +454,7 @@ with tab_prod:
     sel_ch_key = st.selectbox("🧾 Challan", list(ch_map.keys()), key="sel_ch")
     ch_row     = ch_map[sel_ch_key]
 
-    # ── NORMALISE all 4 key values using _clean_key ───────────────────────────
-    # This is the core fix — every value goes through _clean_key()
-    # before being used in comparisons or stored in composite_key
+    # ── NORMALISE all 4 key values ──
     current_date       = _clean_key(pe_date)
     current_karigar_id = _clean_key(k_row["Karigar_ID"])
     challan_no         = _clean_key(ch_row["Challan_No"])
@@ -525,7 +464,6 @@ with tab_prod:
 
     # ══════════════════════════════════════════════════════════
     # COMPOSITE KEY CHANGE CHECK
-    # On change: wipe hour keys → rerun → fresh render → value= respected
     # ══════════════════════════════════════════════════════════
     if st.session_state.get("last_composite_key", "") != composite_key:
         _clear_hour_state()
@@ -535,21 +473,17 @@ with tab_prod:
 
     # ══════════════════════════════════════════════════════════
     # LOAD SAVED DATA FROM PRODUCTION LOG
-    # Uses _clean_key() on EVERY column before comparing
-    # so float/string mismatches from Google Sheets are neutralised
     # ══════════════════════════════════════════════════════════
     pl = st.session_state.production_log
 
     if not st.session_state.get("prod_data_loaded", False):
         if not pl.empty:
-            # Clean every comparison column in the dataframe too
             pl_check = pl.copy()
             pl_check["_date"]    = pl_check["Date"].apply(_clean_key)
             pl_check["_kar"]     = pl_check["Karigar_ID"].apply(_clean_key)
             pl_check["_challan"] = pl_check["Challan_No"].apply(_clean_key)
             pl_check["_style"]   = pl_check["Style"].apply(_clean_key)
 
-            # Now compare cleaned strings to cleaned strings — no type mismatch
             existing = pl_check[
                 (pl_check["_date"]    == current_date)        &
                 (pl_check["_kar"]     == current_karigar_id)  &
@@ -558,55 +492,46 @@ with tab_prod:
             ]
 
             if not existing.empty:
-                st.success(
-                    f"✅ Loaded saved data — **{k_row['Name']}** | "
-                    f"Challan {challan_no} | {current_style} | {current_date}"
-                )
+                st.success(f"✅ Loaded saved data — **{k_row['Name']}** | Challan {challan_no} | {current_style}")
 
-                # Prefill hour keys from saved rows
                 for _, row in existing.iterrows():
                     op_name = str(row["Operation"]).strip()
                     for hcol in HOUR_COLS:
                         raw = row.get(hcol, 0)
                         try:
-                            # NaN from blank Google Sheets cells → treat as 0
                             val = 0 if pd.isna(raw) else int(float(raw))
                         except (ValueError, TypeError):
                             val = 0
                         if val > 0:
-                            # These keys don't exist yet (wiped + rerun)
-                            # so widget value= will be respected on render
                             st.session_state[f"saved_op_{hcol}"] = op_name
                             st.session_state[f"saved_hv_{hcol}"] = val
             else:
-                # ── DEBUG: show what was searched vs what exists ──────────
-                # This helps identify any remaining mismatch in production
-                with st.expander("🔍 Debug — No saved data found", expanded=False):
-                    st.write("**Searching for:**")
-                    st.json({
-                        "Date":       current_date,
-                        "Karigar_ID": current_karigar_id,
-                        "Challan_No": challan_no,
-                        "Style":      current_style,
-                    })
-                    st.write("**Production log (first 5 rows, cleaned):**")
-                    if not pl.empty:
-                        debug_df = pl[["Date","Karigar_ID","Challan_No","Style"]].head(5).copy()
-                        debug_df["Date_clean"]       = debug_df["Date"].apply(_clean_key)
-                        debug_df["Karigar_ID_clean"] = debug_df["Karigar_ID"].apply(_clean_key)
-                        debug_df["Challan_No_clean"] = debug_df["Challan_No"].apply(_clean_key)
-                        debug_df["Style_clean"]      = debug_df["Style"].apply(_clean_key)
-                        st.dataframe(debug_df, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Production log is empty.")
-                st.info(
-                    f"📝 New entry — **{k_row['Name']}** | "
-                    f"Challan {challan_no} | {current_style} | {current_date}"
-                )
+                st.info(f"📝 New entry — **{k_row['Name']}** | Challan {challan_no} | {current_style}")
         else:
             st.info("📝 No production log yet. Start entering data below.")
 
         st.session_state["prod_data_loaded"] = True
+
+    # ══════════════════════════════════════════════════════════
+    # CHALLAN INFO CARD
+    # ══════════════════════════════════════════════════════════
+    ch_qty = int(safe_num(pd.Series([ch_row["Total_Qty"]])).iloc[0])
+    ch_rec = int(safe_num(pd.Series([ch_row.get("Received_Qty",0)])).iloc[0])
+
+    st.markdown(f"""
+    <div class="challan-info-card">
+      <div class="ci-title">📋 Entry Details — Fixed for all hours below</div>
+      <div class="ci-row">
+        <div class="ci-item">👗 Style: <span>{pe_style}</span></div>
+        <div class="ci-item">🧾 Challan: <span>{challan_no}</span></div>
+        <div class="ci-item">🏭 Party: <span>{ch_row.get('Party','—')}</span></div>
+        <div class="ci-item">📦 Total Qty: <span>{ch_qty}</span></div>
+        <div class="ci-item">✅ Received: <span>{ch_rec}</span></div>
+        <div class="ci-item">⏳ Pending: <span>{ch_qty - ch_rec}</span></div>
+        <div class="ci-item">💰 Rate/Pc: <span>₹{ch_row.get('Rate_Per_Pc', 0)}</span></div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
     # OPERATION INFO
@@ -631,14 +556,14 @@ with tab_prod:
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Piece Entry</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="prod-header">
-      <span>⏰ TIME</span>
-      <span>👗 STYLE</span>
-      <span>🔧 WORK / OPERATION</span>
-      <span>🎯 TARGET QTY</span>
-      <span>✅ ACTUAL QTY</span>
-      <span>📊 EFFICIENCY</span>
-    </div>""", unsafe_allow_html=True)
+    <div class="entry-table-hdr">
+      <span>TIME</span>
+      <span>WORK / OPERATION</span>
+      <span>TARGET QTY<br><small style="font-weight:400;opacity:.8;">(per hour)</small></span>
+      <span>ACTUAL QTY</span>
+      <span>EFFICIENCY</span>
+    </div>
+    """, unsafe_allow_html=True)
 
     from collections import defaultdict
     h_vals    = {}
@@ -649,28 +574,21 @@ with tab_prod:
     for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
 
         if hcol == "H_13_14":
-            st.markdown(
-                f'<div class="prod-row-lunch">🍽️ &nbsp; {hlbl} — Lunch Break</div>',
-                unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="entry-row-lunch">
+              <div class="time-lbl" style="color:#9e9e9e;">{hlbl}</div>
+              <div style="padding:0 12px;font-size:.82rem;color:#bdbdbd;font-style:italic;">🍽️ Lunch Break — Unpaid</div>
+            </div>""", unsafe_allow_html=True)
             op_vals[hcol] = None
             h_vals[hcol]  = 0
             continue
 
-        c0, c1, c2, c3, c4, c5 = st.columns([0.8, 1.2, 2, 1.1, 1.4, 1.1])
+        row_c = st.columns([1, 3, 1.2, 1.4, 1.2])
 
-        with c0:
-            st.markdown(
-                f'<div style="padding:10px 4px;font-size:.88rem;font-weight:700;'
-                f'color:#1a3a5c;white-space:nowrap;">{hlbl}</div>',
-                unsafe_allow_html=True)
+        with row_c[0]:
+            st.markdown(f'<div style="padding:10px 4px;text-align:center;font-size:.88rem;font-weight:700;color:#2c5aa0;border-right:1px solid #dde3ea;">{hlbl}</div>', unsafe_allow_html=True)
 
-        with c1:
-            st.markdown(
-                f'<div style="text-align:center;padding:10px 4px;font-size:.82rem;'
-                f'color:#555;font-weight:600;">{pe_style}</div>',
-                unsafe_allow_html=True)
-
-        with c2:
+        with row_c[1]:
             saved_op  = st.session_state.get(f"saved_op_{hcol}", "")
             default_i = 0
             if saved_op and saved_op in op_list:
@@ -689,22 +607,17 @@ with tab_prod:
             if sel_op:
                 prev_op = sel_op
 
-        with c3:
+        with row_c[2]:
             if sel_op and sel_op in op_info:
                 ht = op_info[sel_op]["Hourly_Target"]
-                st.markdown(
-                    f'<div style="text-align:center;padding:10px;font-size:.95rem;'
-                    f'font-weight:700;color:#2c5aa0;">{ht}</div>',
-                    unsafe_allow_html=True)
+                st.markdown(f'<div style="padding:10px 4px;text-align:center;font-size:.92rem;font-weight:700;color:#1a3a5c;">{ht}</div>', unsafe_allow_html=True)
             else:
-                st.markdown(
-                    '<div style="text-align:center;padding:10px;color:#ccc;">—</div>',
-                    unsafe_allow_html=True)
+                st.markdown('<div style="padding:10px 4px;text-align:center;color:#bbb;font-size:.82rem;">—</div>', unsafe_allow_html=True)
 
-        with c4:
+        with row_c[3]:
             saved_val = int(st.session_state.get(f"saved_hv_{hcol}", 0))
             pcs = st.number_input(
-                f"qty_{hlbl}",
+                f"pcs_{hlbl}",
                 min_value=0, step=1,
                 value=saved_val,
                 key=f"inp_hv_{hcol}",
@@ -712,21 +625,22 @@ with tab_prod:
             st.session_state[f"saved_hv_{hcol}"] = pcs
             h_vals[hcol] = pcs
 
-        with c5:
+        with row_c[4]:
             if sel_op and sel_op in op_info and pcs > 0:
                 ht2  = op_info[sel_op]["Hourly_Target"]
                 eff  = round(pcs / ht2 * 100) if ht2 > 0 else 0
                 rate = op_info[sel_op]["Rate_Rs"]
-                cls  = "eff-ex" if eff >= 100 else ("eff-gd" if eff >= 75 else "eff-bl")
-                ico  = "✅" if eff >= 100 else ("⚡" if eff >= 75 else "⚠️")
-                st.markdown(f'<div class="{cls}">{ico} {eff}%</div>', unsafe_allow_html=True)
+                if eff >= 100:
+                    st.markdown(f'<div class="eff-ex">✅ {eff}%</div>', unsafe_allow_html=True)
+                elif eff >= 75:
+                    st.markdown(f'<div class="eff-gd">⚡ {eff}%</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="eff-bl">⚠️ {eff}%</div>', unsafe_allow_html=True)
                 op_totals[sel_op]["pieces"] += pcs
                 op_totals[sel_op]["hours"]  += 1
                 op_totals[sel_op]["value"]  += pcs * rate
             else:
-                st.markdown(
-                    '<div style="text-align:center;color:#ccc;padding:10px;">—</div>',
-                    unsafe_allow_html=True)
+                st.markdown('<div style="color:#bbb;font-size:.8rem;text-align:center;padding:10px 4px;">—</div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
     # SUMMARY
@@ -737,37 +651,31 @@ with tab_prod:
     if total_pcs > 0:
         st.markdown("---")
         st.markdown('<div class="sec-hdr">📊 Session Summary</div>', unsafe_allow_html=True)
-        sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("Total Pieces",   f"{total_pcs:,}")
-        sc2.metric("Piece Value",    f"₹{total_value:,.2f}")
-        avg_eff_val = (
+        sum_cols = st.columns(4)
+        sum_cols[0].metric("Total Pieces",  f"{total_pcs:,}")
+        sum_cols[1].metric("Piece Value",   f"₹{total_value:,.2f}")
+        avg_eff_now = (
             sum(op_totals[op]["pieces"] / op_info[op]["Target"] * 100
                 for op in op_totals if op_info[op]["Target"] > 0)
-            / len(op_totals) if op_totals else 0
-        )
-        sc3.metric("Avg Efficiency", f"{avg_eff_val:.1f}%")
+            / len(op_totals)
+        ) if op_totals else 0
+        sum_cols[2].metric("Avg Efficiency", f"{avg_eff_now:.1f}%")
+        sum_cols[3].metric("Operations", len(op_totals))
 
         for op_name, data in op_totals.items():
-            od    = op_info[op_name]
-            d_eff = data["pieces"] / od["Target"] * 100 if od["Target"] > 0 else 0
-            badge = ("🏆 Excellent" if d_eff >= 100 else
-                     "⭐ Good"       if d_eff >= 85  else
-                     "✅ Fair"       if d_eff >= 70  else "⚠️ Below")
-            st.markdown(
-                f'<div class="ro-field">{op_name}: <b>{data["pieces"]} pcs</b> '
-                f'({d_eff:.1f}%) {badge} — ₹{data["value"]:.0f}</div>',
-                unsafe_allow_html=True)
+            od2 = op_info[op_name]
+            daily_eff = data["pieces"] / od2["Target"] * 100 if od2["Target"] > 0 else 0
+            badge = "🏆 Excellent" if daily_eff>=100 else ("⭐ Good" if daily_eff>=85 else ("✅ Fair" if daily_eff>=70 else "⚠️ Below"))
+            st.markdown(f'<div class="ro-field">{op_name}: <b>{data["pieces"]} pcs</b> ({daily_eff:.1f}%) {badge} — ₹{data["value"]:.0f}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     if total_pcs == 0:
-        st.warning("⚠️ Enter at least one piece count to enable saving.")
+        st.warning("⚠️ Enter at least one piece to save.")
 
     # ══════════════════════════════════════════════════════════
-    # UPSERT SAVE
+    # SAVE BUTTON — Upsert + Auto-refresh
     # ══════════════════════════════════════════════════════════
-    if st.button("💾 SAVE PRODUCTION ENTRY", key="pe_save",
-                 use_container_width=True, type="primary",
-                 disabled=(total_pcs == 0)):
+    if st.button("💾 Save Production Entry", key="pe_save", use_container_width=True, type="primary", disabled=(total_pcs==0)):
 
         log_df    = st.session_state.production_log.copy()
         saved_log = []
@@ -816,12 +724,14 @@ with tab_prod:
                     errors="ignore").copy()
 
             log_df = pd.concat([log_df, pd.DataFrame([new_row])], ignore_index=True)
-            saved_log.append(
-                f"• {op_name}: {data['pieces']} pcs ({op_eff:.1f}%) — ₹{data['value']:.0f}")
+            saved_log.append(f"• {op_name}: {data['pieces']} pcs ({op_eff:.1f}%) — ₹{data['value']:.0f}")
 
-        st.session_state.production_log      = log_df
-        st.session_state["prod_data_loaded"] = False
+        st.session_state.production_log = log_df
         save_sheet("production_log", log_df)
+
+        # ── CRITICAL: Clear hour state + reset load flag → fresh form on rerun ──
+        _clear_hour_state()
+        st.session_state["prod_data_loaded"] = False
 
         st.success("✅ **Saved to Google Sheets!** 🟢\n\n" + "\n".join(saved_log))
         st.balloons()
