@@ -517,6 +517,70 @@ with tab_prod:
             "Hourly_Target": max(1, int(row["Target"])),
         }
     op_list = [""] + style_ops["Operation"].tolist()
+    def auto_save():
+        from collections import defaultdict
+        _h_vals  = {}
+        _op_vals = {}
+        _op_tots = defaultdict(lambda: {"pieces": 0, "hours": 0, "value": 0})
+        for _hc, _hl in zip(HOUR_COLS, HOUR_LBLS):
+            _h_vals[_hc]  = st.session_state.get(f"hv_{_hc}", 0)
+            _op_vals[_hc] = st.session_state.get(f"sel_op_{_hc}", None)
+        for _hc in HOUR_COLS:
+            if _hc == "H_13_14": continue
+            _op  = _op_vals.get(_hc)
+            _pcs = _h_vals.get(_hc, 0)
+            if _op and _op in op_info and _pcs > 0:
+                _od = op_info[_op]
+                _op_tots[_op]["pieces"] += _pcs
+                _op_tots[_op]["hours"]  += 1
+                _op_tots[_op]["value"]  += _pcs * _od["Rate_Rs"]
+        if not _op_tots:
+            return
+        _log_df = st.session_state.production_log.copy()
+        for _op_name, _data in _op_tots.items():
+            _od      = op_info[_op_name]
+            _op_eff  = round(_data["pieces"] / _od["Target"] * 100, 1) if _od["Target"] > 0 else 0.0
+            _hr      = {hc: (_h_vals.get(hc, 0) if _op_vals.get(hc) == _op_name else 0) for hc in HOUR_COLS}
+            _budg    = round(_od["Rate_Rs"] * _od["Target"], 2)
+            _act     = round(_data["value"], 2)
+            _new_row = {
+                "Date":                current_date,
+                "Karigar_ID":          current_karigar_id,
+                "Karigar_Name":        k_row["Name"],
+                "Challan_No":          challan_no,
+                "Style":               current_style,
+                "Operation":           _op_name,
+                **_hr,
+                "Total_Pieces":        _data["pieces"],
+                "Target":              _od["Target"],
+                "Rate_Rs":             _od["Rate_Rs"],
+                "Efficiency_%":        _op_eff,
+                "Piece_Value_Rs":      _act,
+                "Budgeted_Expense_Rs": _budg,
+                "Actual_Expense_Rs":   _act,
+                "PL_Rs":               round(_act - _budg, 2),
+                "Saved_By":            st.session_state.get("current_user", "unknown"),
+                "Saved_By_Name":       st.session_state.get("current_name", ""),
+            }
+            if not _log_df.empty:
+                _log_df["_ck_date"]    = _log_df["Date"].apply(_clean_key)
+                _log_df["_ck_kar"]     = _log_df["Karigar_ID"].apply(_clean_key)
+                _log_df["_ck_challan"] = _log_df["Challan_No"].apply(_clean_key)
+                _log_df["_ck_style"]   = _log_df["Style"].apply(_clean_key)
+                _log_df["_ck_op"]      = _log_df["Operation"].apply(_clean_key)
+                _keep = ~(
+                    (_log_df["_ck_date"]    == current_date) &
+                    (_log_df["_ck_kar"]     == current_karigar_id) &
+                    (_log_df["_ck_challan"] == challan_no) &
+                    (_log_df["_ck_style"]   == current_style) &
+                    (_log_df["_ck_op"]      == _clean_key(_op_name))
+                )
+                _log_df = _log_df[_keep].drop(
+                    columns=["_ck_date","_ck_kar","_ck_challan","_ck_style","_ck_op"],
+                    errors="ignore")
+            _log_df = pd.concat([_log_df, pd.DataFrame([_new_row])], ignore_index=True)
+        st.session_state.production_log = _log_df
+        save_sheet("production_log", _log_df)
     # ── Hour Table ──
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Entry</div>', unsafe_allow_html=True)
@@ -593,6 +657,7 @@ with tab_prod:
                 f"pcs_{hlbl}",
                 min_value=0, step=1,
                 key=f"hv_{hcol}",
+                on_change=auto_save,
                 label_visibility="collapsed")
             h_vals[hcol] = pcs
 
