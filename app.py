@@ -829,9 +829,71 @@ with tab_prod:
         st.balloons()
         st.rerun()
 
-# ── Day View ──
+# ── Live Time Widget ──
     st.markdown("---")
-    st.markdown('<div class="sec-hdr">📅 Day View Report</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">🕐 Live Time & Entry Log</div>', unsafe_allow_html=True)
+    
+    lt1, lt2 = st.columns(2)
+    with lt1:
+        st.markdown(f"""
+        <div style="background:#1a3a5c;color:#fff;padding:16px 20px;border-radius:10px;text-align:center;">
+          <div style="font-size:.75rem;opacity:.7;text-transform:uppercase;letter-spacing:.08em;">Current Date & Time</div>
+          <div style="font-size:1.6rem;font-weight:700;font-family:'IBM Plex Mono',monospace;margin-top:6px;">
+            {datetime.now().strftime("%d %b %Y")}
+          </div>
+          <div style="font-size:2rem;font-weight:700;font-family:'IBM Plex Mono',monospace;color:#4fc3f7;">
+            {datetime.now().strftime("%H:%M:%S")}
+          </div>
+          <div style="font-size:.75rem;opacity:.6;margin-top:4px;">
+            👤 {st.session_state.get("current_name","—")} | {ROLES.get(st.session_state.get("current_role",""),{}).get("label","—")}
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🔄 Refresh Time", key="ref_time", use_container_width=True):
+            st.rerun()
+
+    with lt2:
+        pl_live = st.session_state.production_log
+        if not pl_live.empty and "Save_Time" in pl_live.columns:
+            # Last 5 entries
+            recent = pl_live.sort_values("Save_Time", ascending=False).head(5)
+            st.markdown("**🕐 Last 5 Saved Entries:**")
+            for _, r in recent.iterrows():
+                st.markdown(f"""
+                <div style="background:#f0f6ff;border-left:3px solid #2c5aa0;
+                            padding:6px 10px;border-radius:4px;margin:3px 0;font-size:.82rem;">
+                  ⏱ <b>{r.get("Save_Time","—")}</b> &nbsp;|&nbsp;
+                  👤 {r.get("Saved_By_Name","—")} &nbsp;|&nbsp;
+                  🧾 {r.get("Challan_No","—")} &nbsp;|&nbsp;
+                  ✂️ {r.get("Operation","—")} &nbsp;|&nbsp;
+                  📦 {int(r.get("Total_Pieces",0))} pcs
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("Koi saved entry nahi mili abhi.")
+
+    # ── Full Save History ──
+    st.markdown("**📋 Aaj ki Poori Entry History:**")
+    pl_hist = st.session_state.production_log
+    if not pl_hist.empty:
+        hist_today = pl_hist[
+            pl_hist["Date"].apply(_clean_key) == _clean_key(date.today())
+        ].copy()
+        if not hist_today.empty and "Save_Time" in hist_today.columns:
+            hist_today = hist_today.sort_values("Save_Time", ascending=False)
+            hist_cols = [c for c in [
+                "Save_Time","Saved_By_Name","Karigar_Name",
+                "Challan_No","Style","Operation",
+                "Total_Pieces","Actual_Expense_Rs","PL_Rs"
+            ] if c in hist_today.columns]
+            st.dataframe(hist_today[hist_cols], use_container_width=True, hide_index=True)
+
+            # Download history
+            ex_h, ext_h, mime_h = to_excel_bytes(hist_today[hist_cols])
+            st.download_button("📥 Entry History Download", ex_h,
+                f"entry_history_{date.today()}{ext_h}", mime=mime_h, key="dl_hist")
+        else:
+            st.info("Aaj ki koi entry nahi.")
     if not st.session_state.production_log.empty:
         flt_d  = st.date_input("View Date", value=date.today(), key="prod_flt")
         day_pl = st.session_state.production_log[
@@ -847,9 +909,9 @@ with tab_prod:
             st.markdown("**📋 Report 1 — Production Summary**")
             show_cols = [c for c in ["Karigar_Name","Challan_No","Style","Operation",
                 "Total_Pieces","Target","Efficiency_%","Budgeted_Expense_Rs",
-                "Actual_Expense_Rs","PL_Rs"] if c in day_pl.columns]
+                "Actual_Expense_Rs","PL_Rs",
+                "Saved_By_Name","Save_Time"] if c in day_pl.columns]
             st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
-
             st.markdown("---")
 
             # ── Report 2: Karigar Salary vs Piece Value Hour-wise ──
