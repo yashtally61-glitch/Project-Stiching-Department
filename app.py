@@ -509,16 +509,14 @@ with tab_prod:
         st.warning(f"No operations for '{pe_style}'.")
         st.stop()
 
-    op_info = {}
+  op_info = {}
     for _, row in style_ops.iterrows():
         op_info[row["Operation"]] = {
-        "Target":       int(row["Target"]),
-        "Rate_Rs":      float(row["Rate_Rs"]),
-        "Hourly_Target": max(1, int(row["Target"])),  # Already per-hour target from Style Master
-    }
+            "Target":        int(row["Target"]),
+            "Rate_Rs":       float(row["Rate_Rs"]),
+            "Hourly_Target": max(1, int(row["Target"])),
         }
     op_list = [""] + style_ops["Operation"].tolist()
-
     # ── Hour Table ──
     st.markdown("---")
     st.markdown('<div class="sec-hdr">⏱ Hour-wise Entry</div>', unsafe_allow_html=True)
