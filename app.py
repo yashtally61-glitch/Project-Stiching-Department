@@ -758,6 +758,8 @@ with tab_prod:
 
                     report2_rows.append({
                         "Karigar":            kar_name,
+                        "Challan_No":         str(row.get("Challan_No", "")),
+                        "Style":              str(row.get("Style", "")),
                         "Hour":               hlbl,
                         "Operation":          op_name,
                         "Hourly_Salary_Rs":   hourly_sal,
@@ -769,7 +771,6 @@ with tab_prod:
                         "Target_PL_Rs":       target_pl,
                         "Status": "✅ Profit" if net_pl >= 0 else "🔴 Loss",
                     })
-
             if report2_rows:
                 r2_df = pd.DataFrame(report2_rows)
                 st.dataframe(r2_df, use_container_width=True, hide_index=True)
