@@ -64,6 +64,21 @@ DATA_KEYS  = ["style_master","karigar_master","challan_master","production_log",
               "employee_master","karigar_attendance","operating_attendance"]
 DEFAULT_PW = hashlib.sha256("admin123".encode()).hexdigest()
 
+# ── USER ROLES ──
+ROLES = {
+    "admin":       {"label": "👑 Admin",            "tabs": [0,1,2,3,4,5,6,7,8,9]},
+    "finance":     {"label": "💰 Finance Team",      "tabs": [0,2,3,4,5,8,9]},
+    "data_entry":  {"label": "✏️ Data Entry",        "tabs": [0,1,2,6,7]},
+    "external":    {"label": "🌐 External / View",   "tabs": [0,3,4]},
+}
+
+DEFAULT_USERS = {
+    "admin":    {"password": hashlib.sha256("admin123".encode()).hexdigest(), "role": "admin",      "name": "Administrator"},
+    "finance1": {"password": hashlib.sha256("fin123".encode()).hexdigest(),   "role": "finance",    "name": "Finance User"},
+    "entry1":   {"password": hashlib.sha256("entry123".encode()).hexdigest(), "role": "data_entry", "name": "Data Entry"},
+    "viewer1":  {"password": hashlib.sha256("view123".encode()).hexdigest(),  "role": "external",   "name": "External Viewer"},
+}
+
 SHEET_ID = "1_cMCIn5KlvRqXS2yRy7nBidoTmgX8K48gTBaMAqBoFE"
 
 # ═══════════════════════════════════════════
@@ -222,6 +237,54 @@ DEFAULT_DATA = {
 def init_auth():
     if "admin_pw_hash"  not in st.session_state: st.session_state.admin_pw_hash  = DEFAULT_PW
     if "sheet_unlocked" not in st.session_state: st.session_state.sheet_unlocked = False
+    if "users"          not in st.session_state: st.session_state.users          = DEFAULT_USERS.copy()
+    if "logged_in"      not in st.session_state: st.session_state.logged_in      = False
+    if "current_user"   not in st.session_state: st.session_state.current_user   = None
+    if "current_role"   not in st.session_state: st.session_state.current_role   = None
+    if "current_name"   not in st.session_state: st.session_state.current_name   = None
+
+def login_screen():
+    st.markdown("""
+    <div style="max-width:420px;margin:60px auto 0;padding:32px;background:#fff;
+                border-radius:14px;box-shadow:0 4px 24px rgba(44,90,160,0.13);border:1px solid #dde3ea;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:2.5rem;">🧵</div>
+        <div style="font-size:1.3rem;font-weight:700;color:#1a3a5c;">Yash Gallery Pvt Ltd</div>
+        <div style="font-size:.85rem;color:#888;margin-top:4px;">Stitching Costing Interface</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col = st.columns([1,2,1])[1]
+    with col:
+        st.markdown("### 🔐 Login")
+        uname = st.text_input("Username", key="li_user", placeholder="Enter username")
+        passw = st.text_input("Password", type="password", key="li_pass", placeholder="Enter password")
+        if st.button("🚀 Login", use_container_width=True, type="primary"):
+            users = st.session_state.users
+            if uname in users:
+                if users[uname]["password"] == hashlib.sha256(passw.encode()).hexdigest():
+                    st.session_state.logged_in    = True
+                    st.session_state.current_user = uname
+                    st.session_state.current_role = users[uname]["role"]
+                    st.session_state.current_name = users[uname]["name"]
+                    st.rerun()
+                else:
+                    st.error("❌ Wrong password")
+            else:
+                st.error("❌ Username not found")
+        st.markdown("---")
+        st.markdown("""
+        <div style="font-size:.78rem;color:#aaa;text-align:center;">
+        Default logins:<br>
+        admin / admin123 &nbsp;|&nbsp; finance1 / fin123<br>
+        entry1 / entry123 &nbsp;|&nbsp; viewer1 / view123
+        </div>""", unsafe_allow_html=True)
+
+def check_tab_access(tab_index):
+    role = st.session_state.get("current_role", "external")
+    allowed = ROLES.get(role, {}).get("tabs", [])
+    return tab_index in allowed
 
 def lock_widget(key="x"):
     if st.session_state.sheet_unlocked:
@@ -275,14 +338,33 @@ def init_state():
 init_state()
 today_str = str(date.today())
 
+# ── LOGIN GATE ──
+if not st.session_state.logged_in:
+    login_screen()
+    st.stop()
+
 # ═══════════════════════════════════════════
 # HEADER
 # ═══════════════════════════════════════════
-st.markdown(f"""
-<div class="main-hdr">
-  <h2>🧵 Stitching Costing Interface — Yash Gallery Pvt Ltd</h2>
-  <p>Karigar Tracking · Challan Management · Style Costing · Payroll &nbsp;|&nbsp; {date.today().strftime("%d %b %Y")} &nbsp;|&nbsp; 🟢 Google Sheets Connected</p>
-</div>""", unsafe_allow_html=True)
+hdr1, hdr2 = st.columns([5,1])
+with hdr1:
+    st.markdown(f"""
+    <div class="main-hdr">
+      <h2>🧵 Stitching Costing Interface — Yash Gallery Pvt Ltd</h2>
+      <p>Karigar Tracking · Challan Management · Style Costing · Payroll &nbsp;|&nbsp;
+      {date.today().strftime("%d %b %Y")} &nbsp;|&nbsp; 🟢 Google Sheets Connected &nbsp;|&nbsp;
+      👤 <b>{st.session_state.current_name}</b> &nbsp;|&nbsp;
+      {ROLES[st.session_state.current_role]["label"]}
+      </p>
+    </div>""", unsafe_allow_html=True)
+with hdr2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🚪 Logout", use_container_width=True):
+        st.session_state.logged_in    = False
+        st.session_state.current_user = None
+        st.session_state.current_role = None
+        st.session_state.current_name = None
+        st.rerun()
 
 # ═══════════════════════════════════════════
 # SIDEBAR
