@@ -374,7 +374,7 @@ with tab_dash:
         sc = [c for c in ["Karigar_Name","Challan_No","Style","Operation","Total_Pieces","Target","Efficiency_%","Piece_Value_Rs"] if c in tdpl.columns]
         st.dataframe(tdpl[sc], use_container_width=True, hide_index=True)
 # ══════════════════════════════════════════════════════════
-# TAB 2 — PRODUCTION ENTRY v4.5 — Per-Karigar Data Persistence
+# TAB 2 — PRODUCTION ENTRY v4.6 — FIXED Karigar Switching
 # ══════════════════════════════════════════════════════════
 with tab_prod:
     st.markdown('<div class="sec-hdr">📋 Production Entry — Daily Work</div>', unsafe_allow_html=True)
@@ -383,7 +383,7 @@ with tab_prod:
     import_section("production_log", "production_log", "Production Log")
     st.markdown("---")
 
-    # ── HELPER: Clean key for comparison (handles Google Sheets float/string mismatch) ──
+    # ── HELPER: Clean key for comparison ──
     def _clean_key(val):
         if val is None:
             return ""
@@ -398,39 +398,41 @@ with tab_prod:
     # ── HELPER: Wipe all hour widget keys ──
     def _clear_hour_state():
         for hcol in HOUR_COLS:
-            for prefix in ("saved_hv_", "saved_op_", "inp_hv_", "sel_op_"):
+            for prefix in ("saved_hv_", "saved_op_"):
                 k = f"{prefix}{hcol}"
                 if k in st.session_state:
                     del st.session_state[k]
 
     # ══════════════════════════════════════════════════════════
-    # CONTEXT SELECTORS — Date / Karigar / Style / Challan
+    # STEP 1: DATE SELECTION
     # ══════════════════════════════════════════════════════════
-    col_date, col_kar = st.columns([1, 2])
+    pe_date = st.date_input("📅 DATE", value=date.today(), key="pe_date")
 
-    with col_date:
-        pe_date = st.date_input("📅 DATE", value=date.today(), key="pe_date")
+    # ══════════════════════════════════════════════════════════
+    # STEP 2: KARIGAR SELECTION
+    # ══════════════════════════════════════════════════════════
+    st.markdown("**👤 KARIGAR**")
+    kdf = st.session_state.karigar_master.copy()
+    kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
+    kdf["Name"]       = kdf["Name"].astype(str)
 
-    with col_kar:
-        st.markdown("**👤 KARIGAR**")
-        kdf = st.session_state.karigar_master.copy()
-        kdf["Karigar_ID"] = kdf["Karigar_ID"].astype(str)
-        kdf["Name"]       = kdf["Name"].astype(str)
+    srch = st.text_input("Search Karigar", key="ksrch", placeholder="Type name or ID")
+    kdf_f = kdf[
+        kdf["Name"].str.contains(srch, case=False, na=False) |
+        kdf["Karigar_ID"].str.contains(srch, case=False, na=False)
+    ] if srch else kdf
 
-        srch = st.text_input("Search Karigar", key="ksrch", placeholder="Type name or ID")
-        kdf_f = kdf[
-            kdf["Name"].str.contains(srch, case=False, na=False) |
-            kdf["Karigar_ID"].str.contains(srch, case=False, na=False)
-        ] if srch else kdf
+    if kdf_f.empty:
+        st.warning("No karigar found.")
+        st.stop()
 
-        if kdf_f.empty:
-            st.warning("No karigar found.")
-            st.stop()
+    k_map     = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
+    sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
+    k_row     = k_map[sel_k_key]
 
-        k_map     = {f"{r['Karigar_ID']} — {r['Name']}": r for _, r in kdf_f.iterrows()}
-        sel_k_key = st.selectbox("Select Karigar", list(k_map.keys()), key="sel_kar")
-        k_row     = k_map[sel_k_key]
-
+    # ══════════════════════════════════════════════════════════
+    # STEP 3: STYLE SELECTION
+    # ══════════════════════════════════════════════════════════
     sm         = st.session_state.style_master
     all_styles = sm["Style"].unique().tolist() if not sm.empty else []
     if not all_styles:
@@ -438,6 +440,9 @@ with tab_prod:
         st.stop()
     pe_style = st.selectbox("👗 STYLE", all_styles, key="pe_style")
 
+    # ══════════════════════════════════════════════════════════
+    # STEP 4: CHALLAN SELECTION
+    # ══════════════════════════════════════════════════════════
     ch_df   = st.session_state.challan_master
     s_chall = ch_df[ch_df["Style"] == pe_style] if not ch_df.empty else pd.DataFrame()
     if s_chall.empty:
@@ -454,7 +459,9 @@ with tab_prod:
     sel_ch_key = st.selectbox("🧾 Challan", list(ch_map.keys()), key="sel_ch")
     ch_row     = ch_map[sel_ch_key]
 
-    # ── NORMALISE all 4 key values ──
+    # ══════════════════════════════════════════════════════════
+    # COMPOSITE KEY CREATION & CHANGE DETECTION
+    # ══════════════════════════════════════════════════════════
     current_date       = _clean_key(pe_date)
     current_karigar_id = _clean_key(k_row["Karigar_ID"])
     challan_no         = _clean_key(ch_row["Challan_No"])
@@ -462,17 +469,24 @@ with tab_prod:
 
     composite_key = f"{current_date}__{current_karigar_id}__{challan_no}__{current_style}"
 
+    # ── DEBUG: Show current context ──
+    with st.expander("🔍 Debug — Current Selection", expanded=False):
+        st.write(f"**Composite Key:** `{composite_key}`")
+        st.write(f"**Last Key:** `{st.session_state.get('last_composite_key', 'None')}`")
+        st.write(f"**Data Loaded:** {st.session_state.get('prod_data_loaded', False)}")
+
     # ══════════════════════════════════════════════════════════
-    # COMPOSITE KEY CHANGE CHECK
+    # KEY CHANGE → CLEAR + RERUN
     # ══════════════════════════════════════════════════════════
     if st.session_state.get("last_composite_key", "") != composite_key:
+        st.info(f"🔄 Context changed — Clearing old data...")
         _clear_hour_state()
         st.session_state["last_composite_key"] = composite_key
         st.session_state["prod_data_loaded"]   = False
         st.rerun()
 
     # ══════════════════════════════════════════════════════════
-    # LOAD SAVED DATA FROM PRODUCTION LOG
+    # LOAD SAVED DATA (RUNS ONLY ONCE PER COMPOSITE KEY)
     # ══════════════════════════════════════════════════════════
     pl = st.session_state.production_log
 
@@ -492,8 +506,9 @@ with tab_prod:
             ]
 
             if not existing.empty:
-                st.success(f"✅ Loaded saved data — **{k_row['Name']}** | Challan {challan_no} | {current_style}")
+                st.success(f"✅ **Loaded saved data** — {k_row['Name']} | Challan {challan_no} | {current_style}")
 
+                # Prefill hour fields
                 for _, row in existing.iterrows():
                     op_name = str(row["Operation"]).strip()
                     for hcol in HOUR_COLS:
@@ -506,11 +521,24 @@ with tab_prod:
                             st.session_state[f"saved_op_{hcol}"] = op_name
                             st.session_state[f"saved_hv_{hcol}"] = val
             else:
-                st.info(f"📝 New entry — **{k_row['Name']}** | Challan {challan_no} | {current_style}")
+                st.info(f"📝 **New entry** — {k_row['Name']} | Challan {challan_no} | {current_style}")
         else:
             st.info("📝 No production log yet. Start entering data below.")
 
         st.session_state["prod_data_loaded"] = True
+
+    # ══════════════════════════════════════════════════════════
+    # AUTO-FETCH FROM EMPLOYEE MASTER
+    # ══════════════════════════════════════════════════════════
+    em_master = st.session_state.employee_master.copy()
+    em_master["E_Code"] = em_master["E_Code"].astype(str)
+    em_match = em_master[em_master["E_Code"] == str(k_row["Karigar_ID"])]
+    
+    if not em_match.empty:
+        em_r = em_match.iloc[0]
+        st.markdown(f'<div class="ok-box">✅ <b>Auto-fetched:</b> {em_r["Name"]} &nbsp;|&nbsp; Type: <b>{em_r["Type"]}</b> &nbsp;|&nbsp; Daily: <b>₹{em_r["Daily_Rate_Rs"]}</b> &nbsp;|&nbsp; Hourly: <b>₹{em_r["Hourly_Rate_Rs"]}</b></div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="ro-field">ID: <b>{k_row["Karigar_ID"]}</b> &nbsp;|&nbsp; Skill: <b>{k_row["Skill"]}</b> &nbsp;|&nbsp; Rate: <b>₹{k_row["Daily_Rate_Rs"]}/day</b></div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
     # CHALLAN INFO CARD
@@ -602,7 +630,6 @@ with tab_prod:
                 key=f"sel_op_{hcol}",
                 label_visibility="collapsed")
 
-            st.session_state[f"saved_op_{hcol}"] = sel_op
             op_vals[hcol] = sel_op if sel_op else None
             if sel_op:
                 prev_op = sel_op
@@ -620,9 +647,8 @@ with tab_prod:
                 f"pcs_{hlbl}",
                 min_value=0, step=1,
                 value=saved_val,
-                key=f"inp_hv_{hcol}",
+                key=f"hv_{hcol}",
                 label_visibility="collapsed")
-            st.session_state[f"saved_hv_{hcol}"] = pcs
             h_vals[hcol] = pcs
 
         with row_c[4]:
@@ -673,7 +699,7 @@ with tab_prod:
         st.warning("⚠️ Enter at least one piece to save.")
 
     # ══════════════════════════════════════════════════════════
-    # SAVE BUTTON — Upsert + Auto-refresh
+    # SAVE BUTTON
     # ══════════════════════════════════════════════════════════
     if st.button("💾 Save Production Entry", key="pe_save", use_container_width=True, type="primary", disabled=(total_pcs==0)):
 
@@ -704,7 +730,7 @@ with tab_prod:
                 "Piece_Value_Rs": round(data["value"], 2),
             }
 
-            # Upsert: delete matching row first
+            # Upsert logic
             if not log_df.empty:
                 log_df["_ck_date"]    = log_df["Date"].apply(_clean_key)
                 log_df["_ck_kar"]     = log_df["Karigar_ID"].apply(_clean_key)
@@ -729,11 +755,12 @@ with tab_prod:
         st.session_state.production_log = log_df
         save_sheet("production_log", log_df)
 
-        # ── CRITICAL: Clear hour state + reset load flag → fresh form on rerun ──
+        # ── CLEAR EVERYTHING + FORCE FRESH LOAD ──
         _clear_hour_state()
         st.session_state["prod_data_loaded"] = False
+        st.session_state["last_composite_key"] = ""  # Force reload
 
-        st.success("✅ **Saved to Google Sheets!** 🟢\n\n" + "\n".join(saved_log))
+        st.success("✅ **Saved!** 🟢\n\n" + "\n".join(saved_log))
         st.balloons()
         st.rerun()
 
