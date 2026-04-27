@@ -718,15 +718,34 @@ with tab_prod:
                 if c in pl_dl.columns:
                     pl_dl[c] = safe_num(pl_dl[c])
 
-            emp_sum = pl_dl.groupby(["Karigar_ID","Karigar_Name"]).agg(
-                Days             = ("Date",               "nunique"),
-                Total_Pieces     = ("Total_Pieces",       "sum"),
-                Budgeted_Rs      = ("Budgeted_Expense_Rs","sum"),
-                Actual_Rs        = ("Actual_Expense_Rs",  "sum"),
-                PL_Rs            = ("PL_Rs",              "sum"),
-                Avg_Efficiency   = ("Efficiency_%",        "mean"),
-                Operations       = ("Operation",          "nunique"),
-            ).round(2).reset_index()
+           # Missing columns ko 0 se fill karo (purana data ke liye)
+            for fill_col in ["Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs"]:
+                if fill_col not in pl_dl.columns:
+                    pl_dl[fill_col] = 0.0
+
+            agg_dict = {
+                "Date":               "nunique",
+                "Total_Pieces":       "sum",
+                "Budgeted_Expense_Rs":"sum",
+                "Actual_Expense_Rs":  "sum",
+                "PL_Rs":              "sum",
+                "Efficiency_%":       "mean",
+                "Operation":          "nunique",
+            }
+            # Sirf existing columns ko aggregate karo
+            agg_dict = {k: v for k, v in agg_dict.items() if k in pl_dl.columns}
+
+            emp_sum = pl_dl.groupby(["Karigar_ID","Karigar_Name"]).agg(agg_dict).round(2).reset_index()
+
+            emp_sum.rename(columns={
+                "Date":               "Days",
+                "Total_Pieces":       "Total_Pieces",
+                "Budgeted_Expense_Rs":"Budgeted_Rs",
+                "Actual_Expense_Rs":  "Actual_Rs",
+                "PL_Rs":              "PL_Rs",
+                "Efficiency_%":       "Avg_Efficiency",
+                "Operation":          "Operations",
+            }, inplace=True)
             emp_sum["Avg_Efficiency"] = emp_sum["Avg_Efficiency"].round(1)
             emp_sum["Grade"] = emp_sum["Avg_Efficiency"].apply(
                 lambda x: "A–Excellent" if x >= 100 else (
