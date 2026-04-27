@@ -38,6 +38,10 @@ html,body,[class*="css"]{font-family:'IBM Plex Sans',sans-serif;}
 .mc-o{background:#fff8f0;border-left-color:#e65100;}.mc-o .mv{color:#e65100;}
 .hour-card{background:#fff;border:1px solid #dde3ea;border-radius:8px;padding:10px 12px;margin:4px;}
 .hour-card-lunch{background:#fafafa;border:1px dashed #e0e0e0;border-radius:8px;padding:10px 12px;margin:4px;text-align:center;}
+.entry-table-hdr{display:grid;grid-template-columns:1fr 3fr 1.2fr 1.4fr 1.2fr;background:#1a3a5c;color:#fff;padding:9px 14px;border-radius:6px;font-size:.8rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;gap:8px;}
+.entry-table-hdr span{text-align:center;}
+.entry-row-lunch{display:grid;grid-template-columns:1fr 3fr 1.2fr 1.4fr 1.2fr;background:#fafafa;border:1px dashed #e0e0e0;border-radius:6px;padding:6px 12px;margin:2px 0;align-items:center;gap:8px;}
+.time-lbl{font-weight:700;font-size:.85rem;text-align:center;}
 .eff-ex{background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;margin-top:4px;}
 .eff-gd{background:#fff3e0;color:#e65100;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;margin-top:4px;}
 .eff-bl{background:#ffebee;color:#c62828;border-radius:4px;padding:3px 7px;font-size:.76rem;font-weight:600;display:inline-block;margin-top:4px;}
@@ -678,7 +682,9 @@ with tab_prod:
                 "Efficiency_%": op_eff,
                 "Piece_Value_Rs": round(data["value"], 2),
             }
-
+"Budgeted_Expense_Rs": round(od["Rate_Rs"] * od["Target"], 2),
+                "Actual_Expense_Rs":   round(data["value"], 2),
+                "PL_Rs":               round((od["Rate_Rs"] * od["Target"]) - data["value"], 2),
             # Upsert
             if not log_df.empty:
                 log_df["_ck_date"] = log_df["Date"].apply(_clean_key)
@@ -721,6 +727,56 @@ with tab_prod:
                 if c in day_pl.columns:
                     day_pl[c] = safe_num(day_pl[c])
             st.dataframe(day_pl[[c for c in ["Karigar_Name","Challan_No","Style","Operation","Total_Pieces","Target","Efficiency_%","Piece_Value_Rs"] if c in day_pl.columns]], use_container_width=True, hide_index=True)
+            # ── Employee-wise Summary Download ──
+    st.markdown("---")
+    st.markdown('<div class="sec-hdr">📥 Employee-wise Data Summary Download</div>', unsafe_allow_html=True)
+    if not pl_all.empty:
+        dl_from = st.date_input("From Date", value=date.today()-timedelta(days=29), key="dl_from")
+        dl_to   = st.date_input("To Date",   value=date.today(),                    key="dl_to")
+        pl_dl = pl_all.copy()
+        pl_dl["Date_dt"] = pd.to_datetime(pl_dl["Date"], errors="coerce")
+        pl_dl = pl_dl[(pl_dl["Date_dt"] >= pd.Timestamp(dl_from)) & (pl_dl["Date_dt"] <= pd.Timestamp(dl_to))]
+
+        if not pl_dl.empty:
+            for c in ["Total_Pieces","Target","Rate_Rs","Piece_Value_Rs",
+                      "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs","Efficiency_%"]:
+                if c in pl_dl.columns: pl_dl[c] = safe_num(pl_dl[c])
+
+            emp_sum = pl_dl.groupby(["Karigar_ID","Karigar_Name"]).agg(
+                Days           = ("Date",              "nunique"),
+                Total_Pieces   = ("Total_Pieces",      "sum"),
+                Budgeted_Rs    = ("Budgeted_Expense_Rs","sum"),
+                Actual_Rs      = ("Actual_Expense_Rs", "sum"),
+                PL_Rs          = ("PL_Rs",             "sum"),
+                Avg_Efficiency = ("Efficiency_%",       "mean"),
+                Operations     = ("Operation",         "nunique"),
+            ).round(2).reset_index()
+            emp_sum["Avg_Efficiency"] = emp_sum["Avg_Efficiency"].round(1)
+            emp_sum["Grade"] = emp_sum["Avg_Efficiency"].apply(
+                lambda x: "A–Excellent" if x>=100 else ("B–Good" if x>=85 else ("C–Average" if x>=70 else "D–Below Avg")))
+
+            st.dataframe(emp_sum, use_container_width=True, hide_index=True)
+
+            dc1, dc2 = st.columns(2)
+            excel_data, excel_ext, excel_mime = to_excel_bytes(emp_sum)
+            with dc1:
+                st.download_button("📥 Employee Summary (Excel/CSV)", excel_data,
+                    f"emp_summary_{dl_from}_{dl_to}{excel_ext}", mime=excel_mime, key="dl_emp_x")
+            with dc2:
+                st.download_button("📥 Employee Summary (CSV)", to_csv_bytes(emp_sum),
+                    f"emp_summary_{dl_from}_{dl_to}.csv", key="dl_emp_c")
+
+            # Detailed log download
+            detail_cols = [c for c in ["Date","Karigar_ID","Karigar_Name","Challan_No","Style",
+                "Operation","Total_Pieces","Target","Rate_Rs",
+                "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs","Efficiency_%"] if c in pl_dl.columns]
+            excel_d2, ext_d2, mime_d2 = to_excel_bytes(pl_dl[detail_cols])
+            st.download_button("📥 Full Detail Log (All Employees)", excel_d2,
+                f"detail_log_{dl_from}_{dl_to}{ext_d2}", mime=mime_d2, key="dl_det")
+        else:
+            st.info("No data in selected date range.")
+    else:
+        st.info("No production entries yet.")
 # ══════════════════════════════════════════════════════════
 # TAB 3 — CHALLAN MANAGEMENT
 # ══════════════════════════════════════════════════════════
