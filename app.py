@@ -1025,10 +1025,10 @@ show_cols = [c for c in [
     "Saved_By_Name","Save_Time"
 ] if c in day_pl.columns]
 st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
-st.markdown("---")
+        st.markdown("---")
 
-            # ── Report 2: Karigar Salary vs Piece Value Hour-wise ──
-            st.markdown("**💰 Report 2 — Karigar Salary Cost vs Actual Piece Value (Hour-wise)**")
+        # ── Report 2: Karigar Salary vs Piece Value Hour-wise ──
+        st.markdown("**💰 Report 2 — Karigar Salary Cost vs Actual Piece Value (Hour-wise)**")
             st.markdown("""
             <div class="info-box">
             <b>Formula:</b>
