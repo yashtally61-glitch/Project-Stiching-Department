@@ -942,99 +942,98 @@ with tab_prod:
             # ── Report 1: Basic Production Summary ──
             st.markdown("**📋 Report 1 — Production Summary**")
 
-# Hour columns jo filled hain unko show karo
-# ── Rename se PEHLE working hours count karo ──
-orig_hour_cols = [h for h in HOUR_COLS
-                  if h != "H_13_14" and h in day_pl.columns]
+            # ── Rename se PEHLE working hours count karo ──
+            orig_hour_cols = [h for h in HOUR_COLS
+                              if h != "H_13_14" and h in day_pl.columns]
 
-day_pl["Working_Hours"] = day_pl[orig_hour_cols].apply(
-    lambda row: sum(
-        1 for v in row
-        if safe_num(pd.Series([v])).iloc[0] > 0
-    ), axis=1
-)
+            day_pl["Working_Hours"] = day_pl[orig_hour_cols].apply(
+                lambda row: sum(
+                    1 for v in row
+                    if safe_num(pd.Series([v])).iloc[0] > 0
+                ), axis=1
+            )
 
-# Karigar salary fetch function
-em_ref2 = st.session_state.employee_master.copy()
-em_ref2["E_Code"] = em_ref2["E_Code"].astype(str)
+            # Karigar salary fetch function
+            em_ref2 = st.session_state.employee_master.copy()
+            em_ref2["E_Code"] = em_ref2["E_Code"].astype(str)
 
-def get_daily_salary(karigar_id):
-    karigar_id = str(karigar_id)
-    em_row = em_ref2[em_ref2["E_Code"] == karigar_id]
-    if not em_row.empty:
-        return float(em_row["Daily_Rate_Rs"].values[0])
-    km2 = st.session_state.karigar_master.copy()
-    km2["Karigar_ID"] = km2["Karigar_ID"].astype(str)
-    km_row = km2[km2["Karigar_ID"] == karigar_id]
-    if not km_row.empty:
-        return float(km_row["Daily_Rate_Rs"].values[0])
-    return 0.0
+            def get_daily_salary(karigar_id):
+                karigar_id = str(karigar_id)
+                em_row = em_ref2[em_ref2["E_Code"] == karigar_id]
+                if not em_row.empty:
+                    return float(em_row["Daily_Rate_Rs"].values[0])
+                km2 = st.session_state.karigar_master.copy()
+                km2["Karigar_ID"] = km2["Karigar_ID"].astype(str)
+                km_row = km2[km2["Karigar_ID"] == karigar_id]
+                if not km_row.empty:
+                    return float(km_row["Daily_Rate_Rs"].values[0])
+                return 0.0
 
-# Recalculate karo teeno fields
-def recalculate_row(row):
-    wh            = row["Working_Hours"]
-    hourly_target = safe_num(pd.Series([row["Target"]])).iloc[0]
-    rate          = safe_num(pd.Series([row["Rate_Rs"]])).iloc[0]
-    karigar_id    = str(row.get("Karigar_ID", ""))
-    daily_salary  = get_daily_salary(karigar_id)
-    hourly_salary = round(daily_salary / 8, 2)
+            # Recalculate teeno fields
+            def recalculate_row(row):
+                wh            = row["Working_Hours"]
+                hourly_target = safe_num(pd.Series([row["Target"]])).iloc[0]
+                rate          = safe_num(pd.Series([row["Rate_Rs"]])).iloc[0]
+                karigar_id    = str(row.get("Karigar_ID", ""))
+                daily_salary  = get_daily_salary(karigar_id)
+                hourly_salary = round(daily_salary / 8, 2)
 
-    adj_target   = round(hourly_target * wh, 0)
-    budgeted_exp = round(rate * hourly_target * wh, 2)
-    actual_exp   = round(hourly_salary * wh, 2)
-    pl           = round(budgeted_exp - actual_exp, 2)
-    efficiency   = round(
-        safe_num(pd.Series([row["Total_Pieces"]])).iloc[0] / adj_target * 100, 1
-    ) if adj_target > 0 else 0.0
+                adj_target   = round(hourly_target * wh, 0)
+                budgeted_exp = round(rate * hourly_target * wh, 2)
+                actual_exp   = round(hourly_salary * wh, 2)
+                pl           = round(budgeted_exp - actual_exp, 2)
+                efficiency   = round(
+                    safe_num(pd.Series([row["Total_Pieces"]])).iloc[0] / adj_target * 100, 1
+                ) if adj_target > 0 else 0.0
 
-    return pd.Series({
-        "Working_Hours":       wh,
-        "Adj_Target":          int(adj_target),
-        "Budgeted_Expense_Rs": budgeted_exp,
-        "Actual_Expense_Rs":   actual_exp,
-        "PL_Rs":               pl,
-        "Efficiency_%":        efficiency,
-    })
+                return pd.Series({
+                    "Working_Hours":       wh,
+                    "Adj_Target":          int(adj_target),
+                    "Budgeted_Expense_Rs": budgeted_exp,
+                    "Actual_Expense_Rs":   actual_exp,
+                    "PL_Rs":               pl,
+                    "Efficiency_%":        efficiency,
+                })
 
-recalc = day_pl.apply(recalculate_row, axis=1)
-day_pl["Working_Hours"]       = recalc["Working_Hours"]
-day_pl["Adj_Target"]          = recalc["Adj_Target"]
-day_pl["Budgeted_Expense_Rs"] = recalc["Budgeted_Expense_Rs"]
-day_pl["Actual_Expense_Rs"]   = recalc["Actual_Expense_Rs"]
-day_pl["PL_Rs"]               = recalc["PL_Rs"]
-day_pl["Efficiency_%"]        = recalc["Efficiency_%"]
+            recalc = day_pl.apply(recalculate_row, axis=1)
+            day_pl["Working_Hours"]       = recalc["Working_Hours"]
+            day_pl["Adj_Target"]          = recalc["Adj_Target"]
+            day_pl["Budgeted_Expense_Rs"] = recalc["Budgeted_Expense_Rs"]
+            day_pl["Actual_Expense_Rs"]   = recalc["Actual_Expense_Rs"]
+            day_pl["PL_Rs"]               = recalc["PL_Rs"]
+            day_pl["Efficiency_%"]        = recalc["Efficiency_%"]
 
-# ── Ab hour columns rename karo ──
-filled_hour_cols = []
-for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
-    if hcol in day_pl.columns:
-        if safe_num(day_pl[hcol]).sum() > 0:
-            day_pl = day_pl.rename(columns={hcol: f"⏰{hlbl}"})
-            filled_hour_cols.append(f"⏰{hlbl}")
+            # ── Ab hour columns rename karo ──
+            filled_hour_cols = []
+            for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
+                if hcol in day_pl.columns:
+                    if safe_num(day_pl[hcol]).sum() > 0:
+                        day_pl = day_pl.rename(columns={hcol: f"⏰{hlbl}"})
+                        filled_hour_cols.append(f"⏰{hlbl}")
 
-show_cols = [c for c in [
-    "Karigar_Name","Challan_No","Style","Operation",
-    ] + filled_hour_cols + [
-    "Working_Hours",
-    "Total_Pieces",
-    "Adj_Target",
-    "Efficiency_%",
-    "Budgeted_Expense_Rs",
-    "Actual_Expense_Rs",
-    "PL_Rs",
-    "Saved_By_Name","Save_Time"
-] if c in day_pl.columns]
-st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
-        st.markdown("---")
+            show_cols = [c for c in [
+                "Karigar_Name","Challan_No","Style","Operation",
+                ] + filled_hour_cols + [
+                "Working_Hours",
+                "Total_Pieces",
+                "Adj_Target",
+                "Efficiency_%",
+                "Budgeted_Expense_Rs",
+                "Actual_Expense_Rs",
+                "PL_Rs",
+                "Saved_By_Name","Save_Time"
+            ] if c in day_pl.columns]
+            st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
+            st.markdown("---")
 
-        # ── Report 2: Karigar Salary vs Piece Value Hour-wise ──
-        st.markdown("**💰 Report 2 — Karigar Salary Cost vs Actual Piece Value (Hour-wise)**")
+            # ── Report 2: Karigar Salary vs Piece Value Hour-wise ──
+            st.markdown("**💰 Report 2 — Karigar Salary Cost vs Actual Piece Value (Hour-wise)**")
             st.markdown("""
             <div class="info-box">
             <b>Formula:</b>
             Hourly Salary = Daily Rate ÷ 8 &nbsp;|&nbsp;
             Actual Piece Value = Pieces × Rate &nbsp;|&nbsp;
-            Target Piece Value = Target ÷ 8 × Rate &nbsp;|&nbsp;
+            Target Piece Value = Hourly Target × Rate &nbsp;|&nbsp;
             Net P&L = Actual Piece Value − Hourly Salary
             </div>
             """, unsafe_allow_html=True)
@@ -1045,37 +1044,39 @@ st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
             report2_rows = []
 
             for _, row in day_pl.iterrows():
-                kar_id   = str(row["Karigar_ID"]) if "Karigar_ID" in row else ""
-                kar_name = str(row.get("Karigar_Name", ""))
-                op_name  = str(row.get("Operation", ""))
-                rate_rs  = float(row.get("Rate_Rs", 0))
-                target   = int(row.get("Target", 0))
-                hourly_target = max(1, target // 8)
+                kar_id        = str(row["Karigar_ID"]) if "Karigar_ID" in row else ""
+                kar_name      = str(row.get("Karigar_Name", ""))
+                op_name       = str(row.get("Operation", ""))
+                rate_rs       = float(row.get("Rate_Rs", 0))
+                hourly_target = float(row.get("Target", 0))
 
                 # Get salary info
                 em_row = em_ref[em_ref["E_Code"] == kar_id]
                 if not em_row.empty:
-                    daily_rate  = float(em_row["Daily_Rate_Rs"].values[0])
-                    hourly_sal  = round(daily_rate / 8, 2)
+                    daily_rate = float(em_row["Daily_Rate_Rs"].values[0])
+                    hourly_sal = round(daily_rate / 8, 2)
                 else:
                     km_row = st.session_state.karigar_master
                     km_row = km_row[km_row["Karigar_ID"].astype(str) == kar_id]
-                    daily_rate  = float(km_row["Daily_Rate_Rs"].values[0]) if not km_row.empty else 0
-                    hourly_sal  = round(daily_rate / 8, 2)
+                    daily_rate = float(km_row["Daily_Rate_Rs"].values[0]) if not km_row.empty else 0
+                    hourly_sal = round(daily_rate / 8, 2)
 
                 for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
                     if hcol == "H_13_14":
                         continue
-                    if hcol not in row:
+                    # After rename, check renamed col name
+                    renamed_col = f"⏰{hlbl}"
+                    actual_col  = renamed_col if renamed_col in row.index else (hcol if hcol in row.index else None)
+                    if actual_col is None:
                         continue
-                    pcs = int(safe_num(pd.Series([row[hcol]])).iloc[0])
+                    pcs = int(safe_num(pd.Series([row[actual_col]])).iloc[0])
                     if pcs == 0 and op_name == "":
                         continue
 
-                    actual_piece_val  = round(pcs * rate_rs, 2)
-                    target_piece_val  = round(hourly_target * rate_rs, 2)
-                    net_pl            = round(actual_piece_val - hourly_sal, 2)
-                    target_pl         = round(target_piece_val - hourly_sal, 2)
+                    actual_piece_val = round(pcs * rate_rs, 2)
+                    target_piece_val = round(hourly_target * rate_rs, 2)
+                    net_pl           = round(actual_piece_val - hourly_sal, 2)
+                    target_pl        = round(target_piece_val - hourly_sal, 2)
 
                     report2_rows.append({
                         "Karigar":            kar_name,
@@ -1085,7 +1086,7 @@ st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
                         "Operation":          op_name,
                         "Hourly_Salary_Rs":   hourly_sal,
                         "Pieces_Done":        pcs,
-                        "Hourly_Target_Pcs":  hourly_target,
+                        "Hourly_Target_Pcs":  int(hourly_target),
                         "Actual_Piece_Val_Rs":actual_piece_val,
                         "Target_Piece_Val_Rs":target_piece_val,
                         "Net_PL_Rs":          net_pl,
