@@ -1070,7 +1070,7 @@ with tab_prod:
                     if actual_col is None:
                         continue
                     pcs = int(safe_num(pd.Series([row[actual_col]])).iloc[0])
-                    if pcs == 0 and op_name == "":
+                    if pcs == 0:
                         continue
 
                     actual_piece_val = round(pcs * rate_rs, 2)
@@ -1100,14 +1100,24 @@ with tab_prod:
                 st.markdown("---")
                 st.markdown("**📊 Report 2 — Karigar-wise Summary**")
 
-                r2_sum = r2_df.groupby("Karigar").agg(
-                    Total_Salary_Cost    = ("Hourly_Salary_Rs",    "sum"),
+                r2_sum = r2_df.groupby(["Karigar","Operation"]).agg(
+                    Challan_No           = ("Challan_No",           "first"),
+                    Style                = ("Style",                "first"),
+                    Hours_Worked         = ("Hour",                 "count"),
+                    Total_Pieces         = ("Pieces_Done",          "sum"),
+                    Hourly_Target_Pcs    = ("Hourly_Target_Pcs",    "first"),
+                    Total_Salary_Cost    = ("Hourly_Salary_Rs",     "sum"),
                     Total_Actual_Val     = ("Actual_Piece_Val_Rs",  "sum"),
                     Total_Target_Val     = ("Target_Piece_Val_Rs",  "sum"),
                     Total_Net_PL         = ("Net_PL_Rs",            "sum"),
-                    Total_Target_PL      = ("Target_PL_Rs",         "sum"),
-                    Hours_Worked         = ("Hour",                 "count"),
                 ).round(2).reset_index()
+                r2_sum["Avg_Pieces_Per_Hr"] = (
+                    r2_sum["Total_Pieces"] / r2_sum["Hours_Worked"]
+                ).round(1)
+                r2_sum["Efficiency_%"] = (
+                    r2_sum["Total_Pieces"] /
+                    (r2_sum["Hourly_Target_Pcs"] * r2_sum["Hours_Worked"]) * 100
+                ).round(1)
                 r2_sum["Result"] = r2_sum["Total_Net_PL"].apply(
                     lambda x: "✅ Profit" if x >= 0 else "🔴 Loss")
                 st.dataframe(r2_sum, use_container_width=True, hide_index=True)
