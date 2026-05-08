@@ -941,23 +941,91 @@ with tab_prod:
 
             # ── Report 1: Basic Production Summary ──
             st.markdown("**📋 Report 1 — Production Summary**")
-            # Hour columns jo filled hain unko show karo
-            filled_hour_cols = []
-            for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
-                if hcol in day_pl.columns:
-                    if safe_num(day_pl[hcol]).sum() > 0:
-                        day_pl = day_pl.rename(columns={hcol: f"⏰{hlbl}"})
-                        filled_hour_cols.append(f"⏰{hlbl}")
 
-            show_cols = [c for c in [
-                "Karigar_Name","Challan_No","Style","Operation",
-                ] + filled_hour_cols + [
-                "Total_Pieces","Target","Efficiency_%",
-                "Budgeted_Expense_Rs","Actual_Expense_Rs","PL_Rs",
-                "Saved_By_Name","Save_Time"
-            ] if c in day_pl.columns]
-            st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
-            st.markdown("---")
+# Hour columns jo filled hain unko show karo
+# ── Rename se PEHLE working hours count karo ──
+orig_hour_cols = [h for h in HOUR_COLS
+                  if h != "H_13_14" and h in day_pl.columns]
+
+day_pl["Working_Hours"] = day_pl[orig_hour_cols].apply(
+    lambda row: sum(
+        1 for v in row
+        if safe_num(pd.Series([v])).iloc[0] > 0
+    ), axis=1
+)
+
+# Karigar salary fetch function
+em_ref2 = st.session_state.employee_master.copy()
+em_ref2["E_Code"] = em_ref2["E_Code"].astype(str)
+
+def get_daily_salary(karigar_id):
+    karigar_id = str(karigar_id)
+    em_row = em_ref2[em_ref2["E_Code"] == karigar_id]
+    if not em_row.empty:
+        return float(em_row["Daily_Rate_Rs"].values[0])
+    km2 = st.session_state.karigar_master.copy()
+    km2["Karigar_ID"] = km2["Karigar_ID"].astype(str)
+    km_row = km2[km2["Karigar_ID"] == karigar_id]
+    if not km_row.empty:
+        return float(km_row["Daily_Rate_Rs"].values[0])
+    return 0.0
+
+# Recalculate karo teeno fields
+def recalculate_row(row):
+    wh            = row["Working_Hours"]
+    hourly_target = safe_num(pd.Series([row["Target"]])).iloc[0]
+    rate          = safe_num(pd.Series([row["Rate_Rs"]])).iloc[0]
+    karigar_id    = str(row.get("Karigar_ID", ""))
+    daily_salary  = get_daily_salary(karigar_id)
+    hourly_salary = round(daily_salary / 8, 2)
+
+    adj_target   = round(hourly_target * wh, 0)
+    budgeted_exp = round(rate * hourly_target * wh, 2)
+    actual_exp   = round(hourly_salary * wh, 2)
+    pl           = round(budgeted_exp - actual_exp, 2)
+    efficiency   = round(
+        safe_num(pd.Series([row["Total_Pieces"]])).iloc[0] / adj_target * 100, 1
+    ) if adj_target > 0 else 0.0
+
+    return pd.Series({
+        "Working_Hours":       wh,
+        "Adj_Target":          int(adj_target),
+        "Budgeted_Expense_Rs": budgeted_exp,
+        "Actual_Expense_Rs":   actual_exp,
+        "PL_Rs":               pl,
+        "Efficiency_%":        efficiency,
+    })
+
+recalc = day_pl.apply(recalculate_row, axis=1)
+day_pl["Working_Hours"]       = recalc["Working_Hours"]
+day_pl["Adj_Target"]          = recalc["Adj_Target"]
+day_pl["Budgeted_Expense_Rs"] = recalc["Budgeted_Expense_Rs"]
+day_pl["Actual_Expense_Rs"]   = recalc["Actual_Expense_Rs"]
+day_pl["PL_Rs"]               = recalc["PL_Rs"]
+day_pl["Efficiency_%"]        = recalc["Efficiency_%"]
+
+# ── Ab hour columns rename karo ──
+filled_hour_cols = []
+for hcol, hlbl in zip(HOUR_COLS, HOUR_LBLS):
+    if hcol in day_pl.columns:
+        if safe_num(day_pl[hcol]).sum() > 0:
+            day_pl = day_pl.rename(columns={hcol: f"⏰{hlbl}"})
+            filled_hour_cols.append(f"⏰{hlbl}")
+
+show_cols = [c for c in [
+    "Karigar_Name","Challan_No","Style","Operation",
+    ] + filled_hour_cols + [
+    "Working_Hours",
+    "Total_Pieces",
+    "Adj_Target",
+    "Efficiency_%",
+    "Budgeted_Expense_Rs",
+    "Actual_Expense_Rs",
+    "PL_Rs",
+    "Saved_By_Name","Save_Time"
+] if c in day_pl.columns]
+st.dataframe(day_pl[show_cols], use_container_width=True, hide_index=True)
+st.markdown("---")
 
             # ── Report 2: Karigar Salary vs Piece Value Hour-wise ──
             st.markdown("**💰 Report 2 — Karigar Salary Cost vs Actual Piece Value (Hour-wise)**")
