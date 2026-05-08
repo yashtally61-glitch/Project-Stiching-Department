@@ -7,7 +7,7 @@ FIXES v4.3:
 """
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import io, hashlib, zipfile
 
 import gspread
@@ -673,7 +673,7 @@ with tab_prod:
                 "PL_Rs":               round(_act - _budg, 2),
                 "Saved_By":            st.session_state.get("current_user", "unknown"),
                 "Saved_By_Name":       st.session_state.get("current_name", ""),
-                "Save_Time":           datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Save_Time":           datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M:%S"),
             }
 
             if not _log_df.empty:
@@ -869,14 +869,16 @@ with tab_prod:
     
     lt1, lt2 = st.columns(2)
     with lt1:
+        _IST = timezone(timedelta(hours=5, minutes=30))
+        _now_ist = datetime.now(_IST)
         st.markdown(f"""
         <div style="background:#1a3a5c;color:#fff;padding:16px 20px;border-radius:10px;text-align:center;">
-          <div style="font-size:.75rem;opacity:.7;text-transform:uppercase;letter-spacing:.08em;">Current Date & Time</div>
+          <div style="font-size:.75rem;opacity:.7;text-transform:uppercase;letter-spacing:.08em;">Current Date & Time (IST)</div>
           <div style="font-size:1.6rem;font-weight:700;font-family:'IBM Plex Mono',monospace;margin-top:6px;">
-            {datetime.now().strftime("%d %b %Y")}
+            {_now_ist.strftime("%d %b %Y")}
           </div>
           <div style="font-size:2rem;font-weight:700;font-family:'IBM Plex Mono',monospace;color:#4fc3f7;">
-            {datetime.now().strftime("%H:%M:%S")}
+            {_now_ist.strftime("%H:%M:%S")}
           </div>
           <div style="font-size:.75rem;opacity:.6;margin-top:4px;">
             👤 {st.session_state.get("current_name","—")} | {ROLES.get(st.session_state.get("current_role",""),{}).get("label","—")}
